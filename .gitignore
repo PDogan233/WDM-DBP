@@ -19,7 +19,9 @@ out/
 __pycache__/
 *.pyc
 
+# 其他
 *.csv
+ZKIC_lib/
 
 # 系统文件
 Thumbs.db
