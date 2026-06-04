@@ -1,0 +1,22 @@
+{
+    "files.associations": {
+        "*.h": "cpp",
+        "*.cpp": "cpp"
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.autoAddFileAssociations": true,
+    "editor.formatOnSave": false,
+    "cmake.configureOnOpen": true,
+    "cmake.generator": "Visual Studio 17 2022",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.parallelJobs": 8,
+    "cmake.preferredGenerators": [
+        {
+            "name": "Visual Studio 17 2022",
+            "platform": "x64"
+        }
+    ],
+    "cmake.configureSettings": {
+        "CMAKE_GENERATOR_PLATFORM": "x64"
+    }
+}

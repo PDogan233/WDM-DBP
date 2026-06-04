@@ -1,0 +1,39 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cmake",
+            "label": "CMake: 配置 (Debug)",
+            "command": "configure",
+            "args": [
+                "-DCMAKE_BUILD_TYPE=Debug"
+            ],
+            "problemMatcher": [],
+            "detail": "CMake 配置项目 (Debug)"
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: 构建",
+            "command": "build",
+            "args": [],
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "CMake 构建项目"
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: 清理并重新构建",
+            "command": "cleanRebuild",
+            "args": [],
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "detail": "CMake 清理后重新构建"
+        }
+    ]
+}

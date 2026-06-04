@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "C:/Users/PDogan/OneDrive/Files/Scientific research/project/ZKIC/Agent_Dev/code_dev/ZKIC_lib/ZKIC_mathworld/ZKIC_mathworld2p5"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.h": "cpp",
+			"*.cpp": "cpp"
+		},
+		"C_Cpp.autoAddFileAssociations": true
+	}
+}

@@ -1,0 +1,24 @@
+# Visual Studio 生成文件（CMake 替代了它们）
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# 旧的 VS 构建输出
+x64/
+Win32/
+
+# CMake 构建输出
+build/
+out/
+
+# 临时文件
+*.dat
+*.tmp
+__pycache__/
+*.pyc
+
+# 系统文件
+Thumbs.db
+Desktop.ini
