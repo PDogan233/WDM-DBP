@@ -4,9 +4,9 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/../fiber_WDM/fftw",
-                "C:/Users/PDogan/OneDrive/Files/Scientific research/project/ZKIC/Agent_Dev/code_dev/ZKIC_lib/ZKIC_mathworld/ZKIC_mathworld2p5/include",
-                "C:/Users/PDogan/OneDrive/Files/Scientific research/project/ZKIC/Agent_Dev/code_dev/ZKIC_lib/GlobalValueForZD/include"
+                "${workspaceFolder}/fftw",
+                "${workspaceFolder}/ZKIC_lib/ZKIC_mathworld/ZKIC_mathworld2p5/include",
+                "${workspaceFolder}/ZKIC_lib/GlobalValueForZD/include"
             ],
             "defines": [
                 "_DEBUG",

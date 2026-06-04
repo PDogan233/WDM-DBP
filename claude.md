@@ -301,20 +301,20 @@ for span in reverse(Nspans):
 ## 6. 第三方库依赖
 
 ### 6.1 FFTW
-- **路径**: `../fiber_WDM/fftw/`
+- **路径**: `fftw/`（项目内，与 CMakeLists.txt 同级）
 - **头文件**: `fftw3.h`
 - **库文件**: `libfftw3-3.lib` / `libfftw3-3.dll`
 - **用途**: FFT/IFFT 运算（SSFM 色散步骤）
 - **注意**: ZK 数学库的 `<fft.h>` 可能也封装了 FFT — 需确认是否可以直接使用
 
 ### 6.2 ZKIC 数学库 (ZKIC_mathworld v2.5)
-- **路径**: `C:\Users\PDogan\OneDrive\Files\Scientific research\project\ZKIC\Agent_Dev\code_dev\ZKIC_lib\ZKIC_mathworld\ZKIC_mathworld2p5`
+- **路径**: `ZKIC_lib/ZKIC_mathworld/ZKIC_mathworld2p5/`（项目内）
 - **头文件**: `include/` 下（vec.h, mat.h, fft.h, fstreamIO.h, basetypes.h 等）
 - **库文件**: `x64/debug/lib/ZKIC_math_world2p5d.lib`
 - **用途**: 向量/矩阵运算、FFT、文件 I/O
 
 ### 6.3 GlobalValue 库
-- **路径**: `C:\Users\PDogan\OneDrive\Files\Scientific research\project\ZKIC\Agent_Dev\code_dev\ZKIC_lib\GlobalValueForZD`
+- **路径**: `ZKIC_lib/GlobalValueForZD/`（项目内）
 - **头文件**: `include/GlobalValue.h`
 - **库文件**: `x64/debug/lib/signals_globalvalue_world1p1d.lib`
 - **用途**: 波段/信道参数统一管理系统
@@ -345,7 +345,8 @@ for span in reverse(Nspans):
 ✓ format_ref/           — 公司示范代码（规范参考）
 ✓ docs/                 — 文档
 ✓ start_vsc.bat         — 启动脚本
-✓ fiber_WDM/fftw/       — FFTW 库（项目依赖）
+✓ fftw/                 — FFTW 库（项目内依赖）
+✓ ZKIC_lib/             — ZKIC 数学库 + GlobalValue（项目内依赖）
 
 # 忽略：
 ✗ build/                — CMake 构建输出

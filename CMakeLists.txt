@@ -20,14 +20,14 @@ file(GLOB SOURCES
 # ============================================================
 # FFTW 库
 # ============================================================
-set(FFTW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../fiber_WDM/fftw")
+set(FFTW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/fftw")
 set(FFTW_INCLUDE_DIR "${FFTW_DIR}")
 set(FFTW_LIBRARY "${FFTW_DIR}/libfftw3-3.lib")
 
 # ============================================================
 # ZKIC 第三方库
 # ============================================================
-set(ZKIC_BASE "C:/Users/PDogan/OneDrive/Files/Scientific research/project/ZKIC/Agent_Dev/code_dev/ZKIC_lib")
+set(ZKIC_BASE "${CMAKE_CURRENT_SOURCE_DIR}/ZKIC_lib")
 
 set(ZKIC_MATH_INCLUDE "${ZKIC_BASE}/ZKIC_mathworld/ZKIC_mathworld2p5/include")
 set(ZKIC_MATH_LIB_DIR "${ZKIC_BASE}/ZKIC_mathworld/ZKIC_mathworld2p5/x64/debug/lib")
@@ -65,6 +65,21 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     "${FFTW_LIBRARY}"
     "${ZKIC_MATH_LIB}"
     "${ZKIC_GV_LIB}"
+)
+
+# ============================================================
+# 复制 DLL 到输出目录
+# ============================================================
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${FFTW_DIR}/libfftw3-3.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${ZKIC_MATH_LIB_DIR}/../bin/ZKIC_math_world2p5d.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${ZKIC_GV_LIB_DIR}/../bin/signals_globalvalue_world1p1d.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
 )
 
 # ============================================================
