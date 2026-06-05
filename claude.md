@@ -1,6 +1,6 @@
 # ZKIC_project — Claude 项目总览
 
-> 最后更新: 2026-06-05 (v3: 公司库优先 + 替代对照表 + 遗漏模块)
+> 最后更新: 2026-06-05 (v4.1: 三方审查修复 — 环境配置缺项 + 库文档缺项 + 交付模板补全)
 > 本文档供 Claude Code 在后续会话中快速理解项目背景、架构和规范。每次重大变更后请更新本文档。
 
 ---
@@ -13,7 +13,7 @@
 
 **所属公司**：绍兴智科光电计算有限公司 (ZKOE)
 
-**开发规范依据**：`docs/ZKOE公司Agents开发交付要求251003V4p0r1.pdf`（加密，需向公司索取密码）
+**开发规范依据**：`docs/ZKOE公司Agents开发交付要求251003V4p0r1.md`（已从 PDF 转换为可读 Markdown）
 
 ---
 
@@ -53,7 +53,7 @@ ZKIC_project/
 │   ├── para.py, tx_DSP.py, channel.py, dbp.py, rx_DSP.py
 │   ├── utils.py, visualize.py, main_simu_test.py
 │
-├── docs/                      ← 文档（加密 PDF + CHM 手册）
+├── docs/                      ← 文档（交付要求 MD + CHM 手册）
 │
 └── build/                     ← CMake 构建输出（gitignore，每台电脑本地生成）
 ```
@@ -67,29 +67,29 @@ ZKIC_project/
 每个 .h 和 .cpp 文件必须包含：
 
 ```cpp
-/******************************************************************************
+/*******************************************************************************
  * Copyright (c) 2025 Shaoxing Zhike Electro-Optics Computing Co. Ltd. All rights reserved.
  * Confidential and proprietary information.
- * Unauthorized copying, reproduction, or distribution of this software is strictly prohibited.
- *****************************************************************************/
+ * Unauthorized copying, reproduction, or distribution of this software
+ * is strictly prohibited.
+ ******************************************************************************/
 
- /**
-  * @file: ClassName.h
-  * @brief: 简要描述
-  * @author: 作者名
-  * @version: 1.0
-  * @date: YYYY-MM-DD
-  * @department: Product Development Department
-  * @project: ZKOE Agents Development
-  */
+/**
+ * @file: ClassName.h
+ * @brief: 简要描述
+ * @author: 作者名
+ * @version: 1.0.0
+ * @date: YYYY-MM-DD
+ * @department: Product Development Department
+ * @project: ZKOE Agents Development
+ */
 
-  /**
-   * Revision History:
-   *
-   * Version       Date       Author                   Changes
-   * --------   ----------   -------    ------------------------------------
-   *  1.0     YYYY-MM-DD    Author      Initial version
-   */
+/**
+ * Revision History:
+ * * Version    Author          Date          Changes
+ * -----------------------------------------------------------------------------
+ * 1.0.0                      2025-XX-XX    Initial version
+ */
 ```
 
 ### 3.2 命名空间
@@ -104,40 +104,206 @@ namespace ZK {
 
 ### 3.3 类结构模式（Agent 模式）
 
+**核心规则**（来自公司交付要求 V4）：
+
+1. **类不定义构造函数和析构函数**，所有功能由静态成员函数实现
+2. **`execute` 签名不可修改**：必须为 `static void execute(const Parameters& params, Signals& signals)`
+3. **所有辅助函数也必须是静态的**（静态方法只能调用静态方法）
+4. **静态函数间信息传递使用引用**（不使用 `return`）
+5. **一个 .cpp/.h 文件包含且仅包含一个 class**
+6. **继承时，基类和派生类分别定义在不同的文件中**
+7. **派生类的 `Parameters` 继承基类的 `Parameters`**（通过 `struct Parameters : BaseClass::Parameters`）
+
+**Parameters 结构体规则**：
+
+- 结构体名称固定为 `Parameters`
+- 通过 `const` 引用传递（只读输入）
+- `saveFile` 默认值为 `"noSave"`（不保存），多输出端口时设 `saveFile1`, `saveFile2`...
+- 当 `saveFile == "noSave"` 或 `saveFile == ""` 时跳过文件保存
+
+**Signals 结构体规则**：
+
+- 结构体名称固定为 `Signals`
+- 通过非 `const` 引用传递（输出，会被修改）
+- 信号命名按信号种类 + 端口方向：`eIn`（电输入）、`oIn`/`oOut`（光输入/输出）
+- **多端口**：不同端口使用不同变量（如 `oIn1`, `oIn2`），端口变量数 = Agent 端口数
+- **同端口多组数据**（如双偏振 X/Y）：使用单个矩阵变量（如 `cmat oIn` = 2 行矩阵，每行一个偏振）
+
+**基本模板**：
+
 ```cpp
+namespace ZK {
+
+/*
+ * Agent 类的功能描述：......
+ *
+ * Agent 类具体示例执行后的输出：.......
+ */
+
 class AgentName {
 public:
-    // --- 枚举（如需）---
-
-    // --- Parameters 结构体 ---
     struct Parameters {
-        std::string bandId;        // 波段ID（从GlobalValue系统获取参数）
-        long long channelIndex;    // 信道索引
-        // ... 功能特定参数 ...
-        std::string saveFile;           // 文件保存路径
-        mode::WriteMode writeMode;      // 写入模式
-        mode::FileType dataFormat;      // 数据保存格式
+        // 功能特定参数 ...
+        std::string saveFile = "noSave";  // 输出文件保存路径
     };
 
-    // --- Signals 结构体 ---
     struct Signals {
-        // 输入/输出信号，使用 ZK 数学库类型
+        // 输入/输出信号
     };
 
-    // --- 静态执行入口 ---
+    // === 以下语句不可修改 ===
     static void execute(const Parameters& params, Signals& signals);
 
-    // --- 参数验证 ---
+    // === 辅助函数（须定义为静态） ===
     static void checkParam(const Parameters& params);
 
 private:
-    // --- 私有辅助函数 ---
+    // --- 私有辅助函数（也须为静态）---
+};
+
+} // namespace ZK
+```
+
+**单端口示例**（`FiberScalar`）：
+
+```cpp
+class FiberScalar {
+public:
+    struct Parameters {
+        double alpha;         // Attenuation (dB/m)
+        double beta2;         // Dispersion (s^2/m)
+        double gamma;         // Nonlinearity (1/W/m)
+        std::string saveFile = "noSave";
+    };
+    struct Signals {
+        cvec oIn;             // 输入光信号
+        cvec out;             // 输出光信号
+    };
+    static void execute(const Parameters& params, Signals& signals);
 };
 ```
 
+**多端口示例**（`Mux2`）：
+
+```cpp
+class Mux2 {
+public:
+    struct Parameters {
+        std::string saveFile = "noSave";
+    };
+    struct Signals {
+        cvec oIn1;            // 输入光端口 1
+        cvec oIn2;            // 输入光端口 2
+        cvec out;             // 输出光信号
+    };
+    static void execute(const Parameters& params, Signals& signals);
+};
+```
+
+**同端口多数据组（双偏振）示例**（`FiberVector`）：
+
+```cpp
+class FiberVector {
+public:
+    struct Parameters {
+        double alpha;         // Attenuation (dB/m)
+        double beta2;         // Dispersion (s^2/m)
+        double gamma;         // Nonlinearity (1/W/m)
+        std::string saveFile = "noSave";
+    };
+    struct Signals {
+        cmat oIn;             // 2行矩阵 [oInX; oInY] — X/Y 偏振复光场
+        cmat out;             // 2行矩阵 [outX; outY]
+    };
+    static void execute(const Parameters& params, Signals& signals);
+};
+```
+
+**仅有输出的 Agent 示例**（`Laser`）：
+
+```cpp
+class Laser {
+public:
+    struct Parameters {
+        double lamda;         // Laser wavelength [m]
+        double P;             // Optical output power [dBm]
+        double phase;         // Initial phase offset [rad]
+        double LW;            // Laser linewidth [Hz]
+        double Npoints;       // Number of sampling points
+        double deltaT;        // Sampling time interval [s]
+        double FO;            // Frequency offset [Hz]
+        std::string saveFile = "noSave";
+    };
+    struct Signals {
+        cvec out;             // 输出光场 [W^(1/2)] — 仅输出，无输入
+    };
+    static void execute(const Parameters& params, Signals& signals);
+};
+```
+
+**派生类示例**（`LaserDML : public Laser`）：
+
+```cpp
+class LaserDML : public Laser {
+public:
+    struct Parameters : Laser::Parameters {
+        double thresholdCurrent;   // Laser threshold current [mA]
+        double slopeEfficiency;    // Laser slope efficiency [mW/mA]
+        double maxCurrent;         // Maximum operating current [mA]
+        double alpha;              // Linewidth enhancement factor
+        double kappa;              // Chirp coefficient [Hz/mW]
+    };
+    struct Signals {
+        vec eIn;                   // 输入电驱动信号 (DML 新增输入)
+        cvec out;                  // 输出光场 [W^(1/2)]
+    };
+    static void execute(const Parameters& params, Signals& signals);
+};
+```
+
+> **注意**：派生类的 `Parameters` 继承基类 `Parameters`，物理参数在不同对象中有独立内存空间。基类 `Laser::Parameters laserPara` 和派生类 `LaserDML::Parameters laserDMLPara` 的同名成员（如 `alpha`）互不影响。
+
 ### 3.4 函数文档格式
 
-每个函数需要中文注释，包含函数名称、输入参数、输出、功能描述。
+**类级注释**（在类定义前，`namespace ZK {` 之后）：
+
+```
+Agent 类的功能描述：......
+Agent 类具体示例执行后的输出：.......
+```
+
+**示例**：
+```
+Agent 类的功能描述：实现激光器输出信号的模拟。根据输入的 Parameters（如波长、输出功率、
+采样点数、相位、线宽等），生成对应长度的复数向量 signals.oOut。
+
+Agent 类示例执行后的输出：根据所输入的 Parameters，生成长度为 Npoints 的复数光场向量
+signals.oOut。
+```
+
+**静态成员函数注释**（在 .cpp 文件中每个函数定义前）：
+
+```
+静态成员函数名称：void ClassName::execute(const Parameters& params, Signals& signals)
+静态成员函数的输入：params // 类型 ClassName::Parameters，包含的字段（列出关键字段及含义）
+                    signals // 类型 ClassName::Signals，输入信号字段
+静态成员函数的输出：无返回值 void，输出信号储存在 signals.xxx 中
+静态成员函数实现的功能描述：......
+```
+
+**示例**：
+```
+静态成员函数名称：void Laser::execute(const Parameters& params, Signals& signals)
+
+静态成员函数的输入：
+  params // 类型 Laser::Parameters，包含激光器的参数（波长 lamda、功率 P、相位 phase、
+         采样点数 Npoints、线宽 LW、采样间隔 deltaT、光速 cLight、频率偏移 FO 等）
+
+静态成员函数的输出：无返回值 void，输出 laser 信号储存在 signals.oOut 中
+
+静态成员函数实现的功能描述：根据输入参数 params，生成长度为 params.Npoints 的复数光场向量
+signals.oOut。
+```
 
 ### 3.5 ZK 数学库类型速查
 
@@ -214,16 +380,131 @@ vec v5 = "3:2.5:13";       // [3, 5.5, 8, 10.5, 13]
 
 ### 3.6 文件 I/O
 
+**方式一（交付要求指定格式 — 优先使用）**：
+
+公司交付要求规定输出文件为纯文本格式（扩展名 `.dat`），规则如下：
+
+- **保存开关**：`saveFile == "noSave"` 或 `""` 时跳过保存；否则保存到 `saveFile + ".dat"`
+- **数据格式**：所有数据以行向量形式保存；复数拆为实部+虚部交替排列
+- **复数行向量** `[a+bj, c+dj]` → 存储为 `a b c d`（一行）
+- **矩阵**（n×m）：按行展开为 n 行，复数矩阵每行 2m 个元素（实虚交替）
+- **不含列标题、变量名、描述信息**（纯数据）
+- **输出文件命名**：大驼峰命名法，反映数据物理意义（如 `CWLaserOutput.dat`、`ModulatedSignalIQ.dat`）
+
+手动实现模板（cvec — 单偏振/单行向量）：
+
+```cpp
+bool saveData(const cvec& data, const std::string& saveFile) {
+    if (saveFile == "noSave" || saveFile.empty()) return true;
+    std::ofstream outFile(saveFile + ".dat");
+    if (!outFile.is_open()) return false;
+    outFile << std::scientific << std::setprecision(12);
+    for (size_t i = 0; i < data.size(); ++i) {
+        outFile << data[i].real() << " " << data[i].imag();
+        if (i < data.size() - 1) outFile << " ";
+    }
+    outFile.close();
+    return true;
+}
+```
+
+手动实现模板（cmat — 双偏振/多行矩阵，每行一个偏振态）：
+
+```cpp
+bool saveData(const cmat& data, const std::string& saveFile) {
+    if (saveFile == "noSave" || saveFile.empty()) return true;
+    std::ofstream outFile(saveFile + ".dat");
+    if (!outFile.is_open()) return false;
+    outFile << std::scientific << std::setprecision(12);
+    for (int r = 0; r < data.rows(); ++r) {
+        for (int c = 0; c < data.cols(); ++c) {
+            outFile << data(r, c).real() << " " << data(r, c).imag();
+            if (c < data.cols() - 1) outFile << " ";
+        }
+        outFile << "\n";  // 每行一个偏振态，换行
+    }
+    outFile.close();
+    return true;
+}
+```
+
+**方式二（ZKIC 库函数 — 备选）**：
+
 ```cpp
 saveData(signal, params.saveFile, params.dataFormat, params.writeMode);
+// 支持格式：Mat（MATLAB v5）、Zat（ZK 二进制）、Dat、Txt、Csv
 // params.saveFile = "" 或 "noSave" 时跳过保存
 ```
+
+> **注意**：两种方式的跳过条件相同（`"noSave"` / `""`），但方式一按交付要求精确控制数据排列格式，方式二使用 ZKIC 库的固定格式。**与 Python/MATLAB 交互时优先使用方式一**。
 
 ### 3.7 其他规范
 
 - 头文件使用 `#pragma once`（不使用 `#ifndef` 守卫）
+- **命名规范**：
+  - 类名：大驼峰（PascalCase），如 `ClassTest`、`DP_Fiber`
+  - 结构体名：大驼峰，参数/信号结构体固定为 `Parameters` / `Signals`
+  - 结构体内部成员：小驼峰（camelCase），按信号种类+端口命名，如 `eIn`（电输入）、`oOut1`（光输出端口1）
+  - 变量和函数：小驼峰，如 `variableTest`，允许约定俗成的缩写（如 `sqrt`）
+  - 文件名：与类名一致（如 `DP_Fiber.h` / `DP_Fiber.cpp` / `DP_FiberTest.cpp`）
 - 类成员命名使用驼峰式（如 `bandId`, `channelIndex`）
 - 私有成员函数注释在 .cpp 文件中
+
+### 3.8 交付物结构与命名
+
+每个 Agent 的交付包含以下文件：
+
+| 文件 | 说明 |
+|------|------|
+| `AgentName.h` | 类声明头文件 |
+| `AgentName.cpp` | 类实现文件 |
+| `AgentNameTest.cpp` | 测试主程序文件（含 main 函数） |
+| `debug/` 文件夹 | 编译后的 debug 文件包（含测试数据及结果） |
+| `AgentName_tests.docx` | 程序运行测试文档 |
+| `AgentNameTest.m` | MATLAB 可视化脚本 |
+| 程序原理说明文档 | 理论依据（公式推导、论文、PPT 等） |
+
+**文件夹命名格式**：`AgentNameYYYYMMDDvXpY`（如 `Laser20251003v1p0`，`v1p0` = version 1.0）
+
+**一个 Agent 对应一个 .cpp/.h 文件对**。有继承关系时，基类和派生类分文件定义（如 `Laser.h/.cpp` + `LaserDML.h/.cpp` + 各自测试文件）。
+
+### 3.9 测试与可视化要求
+
+**测试要求**：
+- 每个 Agent **不少于 5 个测试用例**
+- 测试文档需包含：具体参数、运行结果截图
+- 测试主程序中需输出仿真参数和信号摘要信息
+
+**MATLAB 可视化**（`AgentNameTest.m`）：
+- 可视化脚本命名与测试文件一致
+- **所有输入和输出数据均需可视化**
+- **输出数据必须从保存的数据文件读取**（不直接使用内存数据），确保可重复性
+- 输入/输出尽量在同一视图或并列视图对比
+- 图表需包含：标题、轴标签、图例、性能指标（EVM/BER/SNR 等）
+- 时域、频域或调制域需覆盖
+
+**模板**（读取 `.dat` 文件并绘图）：
+
+```matlab
+%% Parameters (must match C++ test)
+deltaT = 6.25e-12;  % Sampling interval [s] — must match C++ test params
+Npoints = 32768;    % Number of points — must match C++ test params
+
+%% Read data from output file
+data = load('CWLaserOutput.dat');
+if mod(length(data), 2) == 0
+    signal_complex = data(1:2:end) + 1j * data(2:2:end);
+end
+t = (0:length(signal_complex)-1) * deltaT;
+
+figure('Position', [100, 100, 1000, 700]);
+subplot(2, 1, 1);
+plot(t, abs(signal_complex).^2);
+ylabel('Power (W)'); title('Intensity'); grid on;
+subplot(2, 1, 2);
+plot(t(1:min(1000,end)), real(signal_complex(1:min(1000,end))));
+xlabel('Time (s)'); ylabel('Real Part'); title('Waveform'); grid on;
+```
 
 ---
 
@@ -975,6 +1256,7 @@ std::string ver = itpp_version();   // IT++ 库版本号
 | **文件 I/O 跳过** | `saveFile = ""` 或 `"noSave"` 时跳过保存 |
 | **FFTW 依赖** | 代码禁止 `#include <fftw3.h>`，但 `libfftw3-3.dll` 必须在 exe 目录（ZKIC DLL 运行时加载） |
 | **LAPACK 依赖** | 线性代数模块（inv/det/chol/lu/qr/svd/eigen/ls_solve）依赖 LAPACK，已编译在 ZKIC 数学库中 |
+| **频率轴** | ZKIC 库**不提供** `fftfreq` 等效函数。频域滤波时需手动构造频率网格：`vec f = linspace(-Fs/2, Fs/2 - Fs/N, N)` 配合 `ZK::fftShift` 使用 |
 
 ---
 
@@ -1032,8 +1314,7 @@ std::string ver = itpp_version();   // IT++ 库版本号
 
 ### 10.2 仍需确认
 
-1. **PDF 交付要求**：`docs/ZKOE公司Agents开发交付要求251003V4p0r1.pdf` 有密码保护，请提供可读版本或口头总结
-2. **类名终稿**：`DP_Fiber` / `DP_DBP` 是否符合公司命名规范？是否有指定的命名前缀/后缀规则？
+1. **类名终稿**：`DP_Fiber` / `DP_DBP` 是否符合公司命名规范？是否有指定的命名前缀/后缀规则？
 
 ---
 
@@ -1084,9 +1365,9 @@ std::string ver = itpp_version();   // IT++ 库版本号
 ```
 
 - `includePath`：列出所有第三方库 include 目录（项目特定，迁移到新项目时替换）
-- `compilerPath`：在 `start_vsc.bat` 启动的终端中执行 `where cl.exe` 获取完整路径后填入
-- `windowsSdkVersion`：执行一次 `cmake configure` 后，从 CMake 输出中获取 SDK 版本号后填入
-- 如果 `configurationProvider` 设为 `ms-vscode.cmake-tools`，CMake Tools 会自动接管大部分 IntelliSense 配置，此文件可以较简略
+- `compilerPath`：在 `start_vsc.bat` 启动的终端中执行 `where cl.exe` 获取完整路径后填入（如 `D:/Microsoft Visual Studio/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe`）
+- `windowsSdkVersion`：执行一次 `cmake configure` 后，从 CMake 输出中获取 SDK 版本号后填入（如 `10.0.26100.0`）
+- 如果 `configurationProvider` 设为 `ms-vscode.cmake-tools`，CMake Tools 会自动接管大部分 IntelliSense 配置，此文件中 `compilerPath` 和 `windowsSdkVersion` 可省略
 
 #### B.2 `tasks.json`
 
@@ -1283,9 +1564,13 @@ __pycache__/
 
 原则：只提交源码（.cpp/.h）、配置（CMakeLists.txt, .vscode/）、项目内第三方库（.lib/.dll）。
 
+> **本项目实际策略见第 8 节**（包含 ZKIC_lib/ 排除、fftw/ 提交等具体决策）。
+
 ### F. 注册 MSVC 工具包到 CMake Tools
 
-编辑 `C:\Users\<用户名>\AppData\Local\CMakeTools\cmake-tools-kits.json`，确保存在以下条目：
+编辑 `C:\Users\<用户名>\AppData\Local\CMakeTools\cmake-tools-kits.json`，确保存在以下条目。
+
+> 如果该文件或目录不存在，手动创建目录 `CMakeTools` 和文件 `cmake-tools-kits.json`，写入 `[]`（空数组），然后用 VS 2022 条目填充。VS 安装路径和 MSVC 版本号需根据实际安装位置修改。
 
 ```json
 {
@@ -1306,14 +1591,15 @@ __pycache__/
 #### G.1 从零创建新 C++ 项目
 
 1. 安装 Visual Studio 2022（勾选"使用 C++ 的桌面开发"）
-2. 安装 VSCode + 扩展 `C/C++` + `CMake Tools` + `Claude Code`
-3. 注册 MSVC 工具包（见 F 节）
-4. 创建项目根目录，放入第三方库（如有）
-5. **先创建** `start_vsc.bat`（见 D 节模板），然后双击启动 VSCode
-6. 在 VSCode 中创建 `.vscode/` 下 4 个配置文件（见 B 节模板）
-7. 创建 `CMakeLists.txt`（见 C 节模板）、`.gitignore`（见 E 节）、一个最小 `main.cpp`
-8. 按 `F5` 验证是否能编译运行
-9. 确认通过后，再逐步添加实际代码和库依赖
+2. 安装 Git for Windows（`git` 需在 PATH 中）
+3. 安装 VSCode + 扩展 `C/C++` + `CMake Tools` + `Claude Code`
+4. 注册 MSVC 工具包（见 F 节）
+5. 创建项目根目录，放入第三方库（如有）
+6. **先创建** `start_vsc.bat`（见 D 节模板），然后双击启动 VSCode
+7. 在 VSCode 中创建 `.vscode/` 下 4 个配置文件（见 B 节模板）
+8. 创建 `CMakeLists.txt`（见 C 节模板）、`.gitignore`（见 E 节）、一个最小 `main.cpp`
+9. 按 `F5` 验证是否能编译运行
+10. 确认通过后，再逐步添加实际代码和库依赖
 
 #### G.2 从 git 克隆已有项目
 
