@@ -9,10 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ============================================================
 # 自动发现根目录下的所有源文件
-# 添加/删除/重命名 .cpp/.h 后只需重新 CMake 配置即可（Ctrl+Shift+P → CMake: Configure）
-# 注意：只扫描项目根目录，不会把 format_ref/ 子目录下的旧文件编进来
+# CONFIGURE_DEPENDS 会在每次 build 时自动检测文件增减变化，
+# 无需手动 CMake: Configure。只扫描根目录，排除子目录。
 # ============================================================
-file(GLOB SOURCES
+file(GLOB SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
 )

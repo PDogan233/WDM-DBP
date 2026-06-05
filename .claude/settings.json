@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//tmp/chm_extract/html/**)",
+      "Read(//d/tmp/chm_extract/html/**)",
+      "Bash(cat /tmp/chm_extract/数学库用户手册.hhc)",
+      "Read(//tmp/chm_extract/**)"
+    ]
+  }
+}

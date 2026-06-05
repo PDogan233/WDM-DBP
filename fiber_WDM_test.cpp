@@ -168,7 +168,7 @@ int main() {
     double B_ch = Rs * (1.0 + rrc_rolloff);
 
     // WDM layout
-    int Nch = 3;
+    int Nch = 1;
     double DeltaF = 50e9; // channel spacing
     std::vector<int> ch_idx;
     for (int m = 0; m < Nch; ++m) {
@@ -196,7 +196,7 @@ int main() {
     double c = 299792458.0;
     double nu0 = c / lambda0;
 
-    double L_span = 100e3; // m
+    double L_span = 10e3; // m
     int Nspans = 1;
     double alpha_dBpm = 0.2e-3; // dB/m
     double GroupRef = 1.47;
