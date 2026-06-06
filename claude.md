@@ -68,7 +68,7 @@ ZKIC_project/
 
 ```cpp
 /*******************************************************************************
- * Copyright (c) 2025 Shaoxing Zhike Electro-Optics Computing Co. Ltd. All rights reserved.
+ * Copyright (c) 2026 Shaoxing Zhike Electro-Optics Computing Co. Ltd. All rights reserved.
  * Confidential and proprietary information.
  * Unauthorized copying, reproduction, or distribution of this software
  * is strictly prohibited.
@@ -77,18 +77,18 @@ ZKIC_project/
 /**
  * @file: ClassName.h
  * @brief: 简要描述
- * @author: 作者名
+ * @author: Jiahao Zhang
  * @version: 1.0.0
  * @date: YYYY-MM-DD
- * @department: Product Development Department
- * @project: ZKOE Agents Development
+ * @department: Research and Development Department
+ * @project: ZKIC Agents Development
  */
 
 /**
  * Revision History:
  * * Version    Author          Date          Changes
  * -----------------------------------------------------------------------------
- * 1.0.0                      2025-XX-XX    Initial version
+ * 1.0.0      Jiahao Zhang   2026-XX-XX    Initial version
  */
 ```
 
@@ -265,44 +265,52 @@ public:
 
 ### 3.4 函数文档格式
 
-**类级注释**（在类定义前，`namespace ZK {` 之后）：
+**All comments in code must use English** (file headers, class-level doc blocks, function-level doc blocks, inline comments).
+
+**Class-level comment** (after `namespace ZK {`, before class definition):
 
 ```
-Agent 类的功能描述：......
-Agent 类具体示例执行后的输出：.......
+Agent class functional description: ......
+Example output after execution: .......
 ```
 
-**示例**：
+**Example**:
 ```
-Agent 类的功能描述：实现激光器输出信号的模拟。根据输入的 Parameters（如波长、输出功率、
-采样点数、相位、线宽等），生成对应长度的复数向量 signals.oOut。
+Agent class functional description: Simulates laser output signal generation.
+Based on input Parameters (wavelength, output power, number of sample points,
+phase, linewidth, etc.), generates a complex vector signals.out of corresponding length.
 
-Agent 类示例执行后的输出：根据所输入的 Parameters，生成长度为 Npoints 的复数光场向量
-signals.oOut。
-```
-
-**静态成员函数注释**（在 .cpp 文件中每个函数定义前）：
-
-```
-静态成员函数名称：void ClassName::execute(const Parameters& params, Signals& signals)
-静态成员函数的输入：params // 类型 ClassName::Parameters，包含的字段（列出关键字段及含义）
-                    signals // 类型 ClassName::Signals，输入信号字段
-静态成员函数的输出：无返回值 void，输出信号储存在 signals.xxx 中
-静态成员函数实现的功能描述：......
+Example output after execution: Generates a complex optical field vector
+signals.out of length params.Npoints according to the input Parameters.
 ```
 
-**示例**：
+**Static member function comment** (in .cpp file, before each function definition):
+
 ```
-静态成员函数名称：void Laser::execute(const Parameters& params, Signals& signals)
+Static member function name: void ClassName::execute(const Parameters& params, Signals& signals)
 
-静态成员函数的输入：
-  params // 类型 Laser::Parameters，包含激光器的参数（波长 lamda、功率 P、相位 phase、
-         采样点数 Npoints、线宽 LW、采样间隔 deltaT、光速 cLight、频率偏移 FO 等）
+Input:
+  params  // ClassName::Parameters, key fields and their meanings
+  signals // ClassName::Signals, input signal fields
 
-静态成员函数的输出：无返回值 void，输出 laser 信号储存在 signals.oOut 中
+Output: void (no return value), output signals stored in signals.xxx
 
-静态成员函数实现的功能描述：根据输入参数 params，生成长度为 params.Npoints 的复数光场向量
-signals.oOut。
+Functional description: ......
+```
+
+**Example**:
+```
+Static member function name: void Laser::execute(const Parameters& params, Signals& signals)
+
+Input:
+  params  // Laser::Parameters, containing laser parameters (wavelength lamda,
+          // power P, phase, Npoints samples, linewidth LW, sampling interval
+          // deltaT, speed of light cLight, frequency offset FO, etc.)
+
+Output: void (no return value), laser output signal stored in signals.out
+
+Functional description: Based on input params, generates a complex optical field
+vector signals.out of length params.Npoints.
 ```
 
 ### 3.5 ZK 数学库类型速查
