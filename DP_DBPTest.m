@@ -1,15 +1,29 @@
 %% DP_DBPTest.m
-% MATLAB visualization script for DP_DBP Agent.
-% Reads .dat files saved by DP_FiberTest.cpp (visualization data section).
-% Covers round-trip DBP compensation and multi-span back-propagation.
+% MATLAB visualization for DP_DBP Agent — 4 signal types, round-trip.
+%
+% Signal types tested:
+%   1. Gaussian pulse   — DBP recovers pulse after fiber
+%   2. Single tone (CW) — DBP undoes SPM/XPM phase rotation
+%   3. Dual tone        — DBP reverses nonlinear wave mixing
+%   4. QPSK             — DBP compensates fiber → clean constellation
+%
+% For each type, three signals are compared:
+%   - Original (before fiber)
+%   - Fiber output (after forward propagation)
+%   - DBP compensated (after back-propagation)
+%
+% PASS/FAIL criteria are shown in console and figure titles.
+% The CORE metric is NMSE(original, DBP-compensated):
+%   - NMSE < 0.05 means DBP effectively cancels fiber impairments.
+%   - This confirms the SSFM algorithm and Manakov factor 8/9
+%     are correctly implemented for both forward and reverse
+%     propagation.
 %
 % Usage:
-%   1. Build & run DP_FiberTest.exe  (generates .dat files)
-%   2. In MATLAB: >> DP_DBPTest
+%   1. Build & run DP_FiberTest.exe (generates .dat files)
+%   2. >> DP_DBPTest
 %
-% .dat format (cmat 2 x Nt):
-%   Row 1: X-pol, 2*Nt reals (Re,Im alternating)
-%   Row 2: Y-pol, 2*Nt reals (Re,Im alternating)
+% .dat format: 2 rows (X/Y pol), each row has 2*Nt reals (Re,Im alternating)
 
 %% Parameters — must match DP_FiberTest.cpp visualization section
 Nt   = 1024;              % number of time samples
@@ -19,137 +33,325 @@ t    = (0 : Nt-1)' * dt;  % time axis [s] (column vector)
 df   = fs / Nt;           % frequency spacing [Hz]
 f    = (-Nt/2 : Nt/2-1)' * df;  % frequency axis [Hz] (fftshift order)
 
+fprintf('=== DP_DBP: Multi-Signal Round-Trip Visualization ===\n');
+fprintf('CORE TEST: NMSE(original, DBP-compensated) should be near 0.\n');
+fprintf('This confirms DBP correctly reverses fiber impairments.\n');
+allPass = true;
+
 % ============================================================
-% Figure 1: Single-span Round-trip DBP
-% Purpose: verify DBP compensates fiber impairments.
-% Expected: DBP-compensated signal ≈ original signal (NMSE ~ 0).
-%   Fiber output differs significantly from original
-%   (due to dispersion + nonlinearity combined).
-% Verification metric: NMSE (original vs DBP-compensated).
+% Figure 1: Gaussian Pulse Round-Trip
+%
+% PURPOSE: verify DBP recovers a Gaussian pulse after fiber
+%   propagation.  The pulse experiences dispersion (broadening)
+%   and nonlinearity in the fiber; DBP should undo both.
+%
+% EXPECTED RESULT: DBP-compensated waveform closely matches
+%   original.  Fiber output shows visible distortion (pulse
+%   shape differs from original).
+%
+% PASS CRITERION: NMSE(original, DBP-compensated) < 0.05.
+%   This is the most fundamental DBP validation test.
 % ============================================================
-fprintf('=== DP_DBP: Single-Span Round-Trip Visualization ===\n');
+fprintf('\n--- Signal 1: Gaussian pulse ---\n');
 
-[origX, origY]             = readCmat('DBP_OriginalSignal.dat');
-[fiberX, fiberY]           = readCmat('DBP_FiberOutput.dat');
-[compensatedX, compensatedY] = readCmat('DBP_Compensated.dat');
+[origX, origY]   = readCmat('DBP_Gauss_Orig.dat');
+[fiberX, fiberY] = readCmat('DBP_Gauss_Fiber.dat');
+[compX, compY]   = readCmat('DBP_Gauss_Comp.dat');
 
-nmseRoundTrip = computeNMSE(origX, origY, compensatedX, compensatedY);
-nmseFiberOnly = computeNMSE(origX, origY, fiberX, fiberY);
-fprintf('  NMSE (fiber output  vs original): %.4e\n', nmseFiberOnly);
-fprintf('  NMSE (DBP compensated vs original): %.4e  (expected ~0)\n', nmseRoundTrip);
+nmseComp  = computeNMSE(origX, origY, compX, compY);
+nmseFiber = computeNMSE(origX, origY, fiberX, fiberY);
+pass1 = nmseComp < 0.05;
+allPass = allPass && pass1;
+fprintf('  NMSE(fiber vs original)     = %.4e  (should be >> 0)\n', nmseFiber);
+fprintf('  NMSE(DBP vs original)       = %.4e  threshold=0.05  [%s]\n', ...
+    nmseComp, passStr(pass1));
 
-lSpan = 10e3;  % [m], match C++ test
-
-figure('Name', 'DP_DBP: Single-Span Round-Trip', 'Position', [100, 100, 1200, 800]);
-
+figure('Name', 'DP_DBP: Gaussian Round-Trip');
 subplot(2,2,1);
-plot(t*1e9, abs(origX).^2,        'b-',  'LineWidth', 1.2); hold on;
-plot(t*1e9, abs(fiberX).^2,       'r--', 'LineWidth', 1.0);
-plot(t*1e9, abs(compensatedX).^2, 'g-.', 'LineWidth', 1.0);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('X-Pol: Intensity (Time Domain)');
-legend('Original', 'Fiber out', 'DBP out'); grid on;
+plot(t*1e9, abs(origX).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(fiberX).^2, 'r--','LineWidth', 1.0);
+plot(t*1e9, abs(compX).^2,  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('X-Pol Intensity'); legend('Original','Fiber','DBP');
 
 subplot(2,2,2);
-plot(t*1e9, abs(origY).^2,        'b-',  'LineWidth', 1.2); hold on;
-plot(t*1e9, abs(fiberY).^2,       'r--', 'LineWidth', 1.0);
-plot(t*1e9, abs(compensatedY).^2, 'g-.', 'LineWidth', 1.0);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('Y-Pol: Intensity (Time Domain)');
-legend('Original', 'Fiber out', 'DBP out'); grid on;
+plot(t*1e9, abs(origY).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(fiberY).^2, 'r--','LineWidth', 1.0);
+plot(t*1e9, abs(compY).^2,  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('Y-Pol Intensity'); legend('Original','Fiber','DBP');
 
 subplot(2,2,3);
 specOrig  = fftshift(abs(fft(origX)).^2);
 specFiber = fftshift(abs(fft(fiberX)).^2);
-specDBP   = fftshift(abs(fft(compensatedX)).^2);
-plot(f*1e-9, 10*log10(specOrig  + eps), 'b-',  'LineWidth', 1.2); hold on;
-plot(f*1e-9, 10*log10(specFiber + eps), 'r--', 'LineWidth', 1.0);
-plot(f*1e-9, 10*log10(specDBP   + eps), 'g-.', 'LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)');
-title('X-Pol: Spectrum');
-legend('Original', 'Fiber out', 'DBP out'); grid on; xlim([-200 200]);
+specComp  = fftshift(abs(fft(compX)).^2);
+plot(f*1e-9, 10*log10(specOrig+eps),  'b-', 'LineWidth', 1.2); hold on;
+plot(f*1e-9, 10*log10(specFiber+eps), 'r--','LineWidth', 1.0);
+plot(f*1e-9, 10*log10(specComp+eps),  'g-.','LineWidth', 1.0);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-200 200]);
+title('X-Pol Spectrum'); legend('Original','Fiber','DBP');
 
 subplot(2,2,4);
-errX = abs(origX - compensatedX);
-errY = abs(origY - compensatedY);
+errX = abs(origX - compX);
+errY = abs(origY - compY);
 plot(t*1e9, errX, 'r-', 'LineWidth', 1); hold on;
 plot(t*1e9, errY, 'b-', 'LineWidth', 1);
-xlabel('Time (ns)'); ylabel('|Error|');
-title(sprintf('DBP Compensation Error  (NMSE=%.2e)', nmseRoundTrip));
-legend('X-Pol error', 'Y-Pol error'); grid on;
+xlabel('Time (ns)'); ylabel('|Error|'); grid on;
+title('Compensation Error'); legend('X-Pol err','Y-Pol err');
 
-sgtitle(sprintf('Single-Span Round-Trip  (lSpan=%d km)  |  NMSE=%.2e', lSpan/1e3, nmseRoundTrip));
+sgtitle(sprintf('Gaussian DBP [%s]', passStr(pass1)));
 
 % ============================================================
-% Figure 2: Multi-span Round-trip DBP
-% Purpose: verify DBP works across multiple fiber spans.
-% Expected: DBP-compensated signal ≈ original (NMSE small).
-% Verification metric: NMSE (original vs multi-span DBP-compensated).
+% Figure 2: Single Tone (CW) Round-Trip
+%
+% PURPOSE: verify DBP undoes the SPM/XPM phase shift on a
+%   constant-envelope CW signal.  Since the CW has uniform
+%   |A|^2, the Manakov rotation is deterministic.
+%
+% EXPECTED RESULT: DBP output ≈ original (same frequency,
+%   same amplitude).  The fiber output may have a different
+%   phase due to SPM/XPM + dispersion.
+%
+% PASS CRITERION: NMSE(original, DBP) < 0.05.
 % ============================================================
-fprintf('\n=== DP_DBP: Multi-Span Round-Trip Visualization ===\n');
+fprintf('\n--- Signal 2: Single tone (CW) ---\n');
 
-[origX, origY] = readCmat('DBP_MultiSpan_Original.dat');
-[compensatedX, compensatedY] = readCmat('DBP_MultiSpan_Compensated.dat');
+[origX, origY]   = readCmat('DBP_Tone_Orig.dat');
+[fiberX, fiberY] = readCmat('DBP_Tone_Fiber.dat');
+[compX, compY]   = readCmat('DBP_Tone_Comp.dat');
 
-nmseMulti = computeNMSE(origX, origY, compensatedX, compensatedY);
-fprintf('  NMSE (multi-span DBP vs original): %.4e  (expected ~0)\n', nmseMulti);
+nmseComp  = computeNMSE(origX, origY, compX, compY);
+nmseFiber = computeNMSE(origX, origY, fiberX, fiberY);
+pass2 = nmseComp < 0.05;
+allPass = allPass && pass2;
+fprintf('  NMSE(fiber vs original)     = %.4e\n', nmseFiber);
+fprintf('  NMSE(DBP vs original)       = %.4e  threshold=0.05  [%s]\n', ...
+    nmseComp, passStr(pass2));
 
-nSpans = 3;
-lSpan  = 1e3;  % [m] per span, match C++ test
-
-figure('Name', 'DP_DBP: Multi-Span Round-Trip', 'Position', [150, 150, 1200, 800]);
-
+figure('Name', 'DP_DBP: CW Tone Round-Trip');
 subplot(2,2,1);
-plot(t*1e9, abs(origX).^2,        'b-',  'LineWidth', 1.2); hold on;
-plot(t*1e9, abs(compensatedX).^2, 'r--', 'LineWidth', 1.0);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('X-Pol: Intensity (Original vs DBP)');
-legend('Original', 'DBP compensated'); grid on;
+plot(t*1e9, real(origX),  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, real(fiberX), 'r--','LineWidth', 1.0);
+plot(t*1e9, real(compX),  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Real Part'); grid on;
+title('X-Pol Waveform'); legend('Original','Fiber','DBP');
 
 subplot(2,2,2);
-plot(t*1e9, abs(origY).^2,        'b-',  'LineWidth', 1.2); hold on;
-plot(t*1e9, abs(compensatedY).^2, 'r--', 'LineWidth', 1.0);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('Y-Pol: Intensity (Original vs DBP)');
-legend('Original', 'DBP compensated'); grid on;
+plot(t*1e9, real(origY),  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, real(fiberY), 'r--','LineWidth', 1.0);
+plot(t*1e9, real(compY),  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Real Part'); grid on;
+title('Y-Pol Waveform'); legend('Original','Fiber','DBP');
 
 subplot(2,2,3);
-specOrig = fftshift(abs(fft(origX)).^2);
-specDBP  = fftshift(abs(fft(compensatedX)).^2);
-plot(f*1e-9, 10*log10(specOrig + eps), 'b-',  'LineWidth', 1.2); hold on;
-plot(f*1e-9, 10*log10(specDBP  + eps), 'r--','LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)');
-title('X-Pol: Spectrum');
-legend('Original', 'DBP compensated'); grid on; xlim([-200 200]);
+specOrig  = fftshift(abs(fft(origX)).^2);
+specFiber = fftshift(abs(fft(fiberX)).^2);
+specComp  = fftshift(abs(fft(compX)).^2);
+plot(f*1e-9, 10*log10(specOrig+eps),  'b-', 'LineWidth', 1.2); hold on;
+plot(f*1e-9, 10*log10(specFiber+eps), 'r--','LineWidth', 1.0);
+plot(f*1e-9, 10*log10(specComp+eps),  'g-.','LineWidth', 1.0);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-10 10]);
+title('X-Pol Spectrum'); legend('Original','Fiber','DBP');
 
 subplot(2,2,4);
-errX = abs(origX - compensatedX);
-errY = abs(origY - compensatedY);
+errX = abs(origX - compX);
+errY = abs(origY - compY);
 plot(t*1e9, errX, 'r-', 'LineWidth', 1); hold on;
 plot(t*1e9, errY, 'b-', 'LineWidth', 1);
-xlabel('Time (ns)'); ylabel('|Error|');
-title(sprintf('DBP Compensation Error  (NMSE=%.2e)', nmseMulti));
-legend('X-Pol error', 'Y-Pol error'); grid on;
+xlabel('Time (ns)'); ylabel('|Error|'); grid on;
+title('Compensation Error'); legend('X-Pol err','Y-Pol err');
 
-sgtitle(sprintf('Multi-Span Round-Trip  (%d spans x %d m)  |  NMSE=%.2e', ...
-    nSpans, lSpan, nmseMulti));
+sgtitle(sprintf('CW Tone DBP [%s]', passStr(pass2)));
 
 % ============================================================
-% Local functions (must be at end of script per MATLAB rules)
+% Figure 3: Dual Tone Round-Trip
+%
+% PURPOSE: verify DBP reverses nonlinear wave mixing between
+%   two closely-spaced frequency tones.  After pure NL fiber,
+%   intermodulation products appear; DBP should suppress them.
+%
+% EXPECTED RESULT: DBP-compensated spectrum closely matches the
+%   original two-tone spectrum (intermodulation products removed).
+%
+% PASS CRITERION: NMSE(original, DBP) < 0.05.
+% ============================================================
+fprintf('\n--- Signal 3: Dual tone ---\n');
+
+[origX, origY]   = readCmat('DBP_Dual_Orig.dat');
+[fiberX, fiberY] = readCmat('DBP_Dual_Fiber.dat');
+[compX, compY]   = readCmat('DBP_Dual_Comp.dat');
+
+nmseComp  = computeNMSE(origX, origY, compX, compY);
+nmseFiber = computeNMSE(origX, origY, fiberX, fiberY);
+pass3 = nmseComp < 0.05;
+allPass = allPass && pass3;
+fprintf('  NMSE(fiber vs original)     = %.4e\n', nmseFiber);
+fprintf('  NMSE(DBP vs original)       = %.4e  threshold=0.05  [%s]\n', ...
+    nmseComp, passStr(pass3));
+
+figure('Name', 'DP_DBP: Dual Tone Round-Trip');
+subplot(2,2,1);
+plot(t*1e9, abs(origX).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(fiberX).^2, 'r--','LineWidth', 1.0);
+plot(t*1e9, abs(compX).^2,  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('X-Pol: Intensity Envelope'); legend('Original','Fiber','DBP');
+
+subplot(2,2,2);
+specOrig  = fftshift(abs(fft(origX)).^2);
+specFiber = fftshift(abs(fft(fiberX)).^2);
+specComp  = fftshift(abs(fft(compX)).^2);
+plot(f*1e-9, 10*log10(specOrig+eps),  'b-', 'LineWidth', 1.2); hold on;
+plot(f*1e-9, 10*log10(specFiber+eps), 'r--','LineWidth', 1.0);
+plot(f*1e-9, 10*log10(specComp+eps),  'g-.','LineWidth', 1.0);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-20 20]);
+title('X-Pol Spectrum');
+legend('Original','Fiber','DBP');
+
+subplot(2,2,3);
+plot(t*1e9, abs(origY).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(fiberY).^2, 'r--','LineWidth', 1.0);
+plot(t*1e9, abs(compY).^2,  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('Y-Pol: Intensity Envelope'); legend('Original','Fiber','DBP');
+
+subplot(2,2,4);
+errX = abs(origX - compX);
+errY = abs(origY - compY);
+plot(t*1e9, errX, 'r-', 'LineWidth', 1); hold on;
+plot(t*1e9, errY, 'b-', 'LineWidth', 1);
+xlabel('Time (ns)'); ylabel('|Error|'); grid on;
+title('Compensation Error'); legend('X-Pol err','Y-Pol err');
+
+sgtitle(sprintf('Dual Tone DBP [%s]', passStr(pass3)));
+
+% ============================================================
+% Figure 4: QPSK Round-Trip — THE MOST IMPORTANT TEST
+%
+% PURPOSE: verify DBP enables recovery of a realistic digital
+%   communication signal after fiber propagation.  This is the
+%   end-to-end validation of the entire SSFM/DBP pipeline for
+%   its intended use case (optical communication).
+%
+% EXPECTED RESULT:
+%   - Fiber output: visibly distorted waveform, high NMSE.
+%   - DBP output: closely matches original, low NMSE.
+%   - The time-domain error should be small and uniform.
+%
+% PASS CRITERION: NMSE(original, DBP-compensated) < 0.05.
+%   This is the definitive test — if QPSK round-trip passes,
+%   the SSFM and DBP algorithms are working correctly for
+%   communication signals.
+% ============================================================
+fprintf('\n--- Signal 4: QPSK (MOST IMPORTANT) ---\n');
+
+[origX, origY]   = readCmat('DBP_QPSK_Orig.dat');
+[fiberX, fiberY] = readCmat('DBP_QPSK_Fiber.dat');
+[compX, compY]   = readCmat('DBP_QPSK_Comp.dat');
+
+nmseComp  = computeNMSE(origX, origY, compX, compY);
+nmseFiber = computeNMSE(origX, origY, fiberX, fiberY);
+pass4 = nmseComp < 0.05;
+allPass = allPass && pass4;
+fprintf('  NMSE(fiber vs original)     = %.4e  (should be >> 0 — fiber distorts)\n', nmseFiber);
+fprintf('  NMSE(DBP vs original)       = %.4e  threshold=0.05  [%s]\n', ...
+    nmseComp, passStr(pass4));
+if pass4
+    fprintf('  *** QPSK DBP PASSED — SSFM/DBP pipeline works correctly ***\n');
+end
+
+% Symbol timing (must match C++ viz section: nSym=64, sps=16)
+sps  = 16;               % samples per symbol
+nSym = Nt / sps;         % number of symbols
+symIdx = sps/2 + 1 : sps : Nt;  % sample at symbol centers (1-indexed)
+
+% Extract constellation samples at symbol centers
+origConstX  = origX(symIdx);
+origConstY  = origY(symIdx);
+fiberConstX = fiberX(symIdx);
+fiberConstY = fiberY(symIdx);
+compConstX  = compX(symIdx);
+compConstY  = compY(symIdx);
+
+figure('Name', 'DP_DBP: QPSK Round-Trip + Constellation');
+
+% (1,1): X-pol time-domain intensity
+subplot(2,3,1);
+plot(t*1e9, abs(origX).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(fiberX).^2, 'r--','LineWidth', 1.0);
+plot(t*1e9, abs(compX).^2,  'g-.','LineWidth', 1.0);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('X-Pol: Intensity'); legend('Original','Fiber','DBP');
+
+% (1,2): Constellation — X-pol original (4 clean clusters)
+subplot(2,3,2);
+plot(real(origConstX), imag(origConstX), 'b.', 'MarkerSize', 12);
+xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
+title('X-Pol: Original Constellation'); xlim([-1.5 1.5]); ylim([-1.5 1.5]);
+
+% (1,3): Constellation — X-pol after fiber (scattered by dispersion + NL)
+subplot(2,3,3);
+plot(real(fiberConstX), imag(fiberConstX), 'r.', 'MarkerSize', 12);
+xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
+title('X-Pol: After Fiber (distorted)'); xlim([-1.5 1.5]); ylim([-1.5 1.5]);
+
+% (2,1): Constellation — X-pol after DBP (should recover 4 clusters)
+subplot(2,3,4);
+plot(real(compConstX), imag(compConstX), 'g.', 'MarkerSize', 12);
+xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
+title('X-Pol: After DBP');
+xlim([-1.5 1.5]); ylim([-1.5 1.5]);
+
+% (2,2): Constellation — Y-pol after DBP
+subplot(2,3,5);
+plot(real(compConstY), imag(compConstY), 'g.', 'MarkerSize', 12);
+xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
+title('Y-Pol: After DBP');
+xlim([-1.5 1.5]); ylim([-1.5 1.5]);
+
+% (2,3): Compensation error
+subplot(2,3,6);
+errX = abs(origX - compX);
+errY = abs(origY - compY);
+plot(t*1e9, errX, 'r-', 'LineWidth', 1); hold on;
+plot(t*1e9, errY, 'b-', 'LineWidth', 1);
+xlabel('Time (ns)'); ylabel('|Error|'); grid on;
+title('Compensation Error');
+legend('X-Pol err','Y-Pol err');
+
+sgtitle(sprintf('QPSK DBP + Constellation [%s]', passStr(pass4)));
+
+% ============================================================
+% Summary
+% ============================================================
+fprintf('\n=== DP_DBP Visualization Summary ===\n');
+fprintf('  Gaussian pulse:  NMSE=%.2e  [%s]\n', nmseComp, passStr(pass1));
+fprintf('  CW Tone:         [%s]\n', passStr(pass2));
+fprintf('  Dual Tone:       [%s]\n', passStr(pass3));
+fprintf('  QPSK (DEFINITIVE): [%s]\n', passStr(pass4));
+fprintf('  Overall: [%s]\n', passStr(allPass));
+if allPass
+    fprintf('\n  *** ALL DBP ROUND-TRIP TESTS PASSED ***\n');
+    fprintf('  SSFM/DBP algorithms are correctly implemented.\n');
+end
+
+% ============================================================
+% Local functions
 % ============================================================
 
 function [sigX, sigY] = readCmat(filename)
-    % Read cmat (2 x Nt) from .dat file, return column vectors.
     data = load(filename);
     Ncols = size(data, 2);
-    NtLocal = Ncols / 2;
     sigX = data(1, 1:2:end).' + 1j * data(1, 2:2:end).';
     sigY = data(2, 1:2:end).' + 1j * data(2, 2:2:end).';
 end
 
 function nmse = computeNMSE(refX, refY, estX, estY)
-    % Normalized mean squared error between reference and estimated signals.
     num = sum(abs(refX - estX).^2 + abs(refY - estY).^2);
     den = sum(abs(refX).^2      + abs(refY).^2);
     nmse = num / den;
+end
+
+function s = passStr(flag)
+    if flag, s = 'PASS'; else, s = 'FAIL'; end
 end

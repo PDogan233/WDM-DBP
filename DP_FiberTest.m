@@ -1,16 +1,21 @@
 %% DP_FiberTest.m
-% MATLAB visualization script for DP_Fiber Agent.
-% Reads .dat files saved by DP_FiberTest.cpp (visualization data section).
-% Covers time-domain and frequency-domain plots for pure loss and pure
-% dispersion tests.
+% MATLAB visualization for DP_Fiber Agent — 4 test signal types.
+%
+% Signal types tested:
+%   1. Gaussian pulse   — pulse propagation, attenuation verification
+%   2. Single tone (CW) — SPM/XPM constant-envelope phase shift
+%   3. Dual tone        — nonlinear wave mixing (FWM)
+%   4. QPSK             — communication waveform integrity
+%
+% For each type, input and output are compared in time and frequency
+% domains.  PASS/FAIL criteria are shown in console output and figure
+% titles.  See comments above each figure for detailed expectations.
 %
 % Usage:
-%   1. Build & run DP_FiberTest.exe  (generates .dat files)
-%   2. In MATLAB: >> DP_FiberTest
+%   1. Build & run DP_FiberTest.exe (generates .dat files)
+%   2. >> DP_FiberTest
 %
-% .dat format (cmat 2 x Nt):
-%   Row 1: X-pol, 2*Nt reals (Re,Im alternating)
-%   Row 2: Y-pol, 2*Nt reals (Re,Im alternating)
+% .dat format: 2 rows (X/Y pol), each row has 2*Nt reals (Re,Im alternating)
 
 %% Parameters — must match DP_FiberTest.cpp visualization section
 Nt   = 1024;              % number of time samples
@@ -20,149 +25,267 @@ t    = (0 : Nt-1)' * dt;  % time axis [s] (column vector)
 df   = fs / Nt;           % frequency spacing [Hz]
 f    = (-Nt/2 : Nt/2-1)' * df;  % frequency axis [Hz] (fftshift order)
 
-% ============================================================
-% Figure 1: Pure Loss Test
-% Purpose: verify exponential field attenuation exp(-alphaNp*L/2).
-% Expected: output = input * exp(-alphaNp*L/2), waveform unchanged.
-% Verification metric: attenuation ratio (measured vs expected).
-% ============================================================
-fprintf('=== DP_Fiber: Pure Loss Visualization ===\n');
+fprintf('=== DP_Fiber: Multi-Signal Visualization ===\n');
+allPass = true;
 
-[sigX_in, sigY_in]   = readCmat('FiberInput_PureLoss.dat');
-[sigX_out, sigY_out] = readCmat('FiberOutput_PureLoss.dat');
+% ============================================================
+% Figure 1: Gaussian Pulse — Pure Loss Test
+%
+% PURPOSE: verify DP_Fiber applies exponential field attenuation
+%   when gamma=0 and beta2=beta3=0 (pure loss regime).
+%
+% EXPECTED RESULT: output = input * exp(-alphaNp * lSpan / 2).
+%   Waveform shape is preserved (only amplitude reduced).
+%   Spectrum is a scaled copy (no frequency-dependent effects).
+%
+% PASS CRITERION: measured attenuation ratio matches expected
+%   within 2% relative error.
+% ============================================================
+fprintf('\n--- Signal 1: Gaussian pulse (pure loss) ---\n');
 
-% Physical parameters (match C++ test)
-alpha_dBpm = 0.2e-3;        % [dB/m]
+[sigX_in, sigY_in]   = readCmat('Fiber_GaussInput.dat');
+[sigX_out, sigY_out] = readCmat('Fiber_GaussOutput.dat');
+
+alpha_dBpm = 0.2e-3;        % [dB/m], match C++ test
 lSpan      = 100e3;         % [m]
-alphaNp    = alpha_dBpm * log(10) / 10;  % [Neper/m]
-
-% Attenuation metric
-powerIn  = sum(abs(sigX_in).^2  + abs(sigY_in).^2);
-powerOut = sum(abs(sigX_out).^2 + abs(sigY_out).^2);
-ratioMeasured = sqrt(powerOut / powerIn);
+alphaNp    = alpha_dBpm * log(10) / 10;
 ratioExpected = exp(-alphaNp * lSpan / 2);
+ratioMeasured = sqrt( (sum(abs(sigX_out).^2 + abs(sigY_out).^2)) / ...
+                       (sum(abs(sigX_in).^2  + abs(sigY_in).^2)) );
 relErr = abs(ratioMeasured - ratioExpected) / ratioExpected;
+pass1 = relErr < 0.02;
+allPass = allPass && pass1;
+fprintf('  Attenuation: measured=%.6f  expected=%.6f  relErr=%.2e  [%s]\n', ...
+    ratioMeasured, ratioExpected, relErr, passStr(pass1));
 
-fprintf('  Field attenuation: measured=%.6f  expected=%.6f  relErr=%.2e\n', ...
-    ratioMeasured, ratioExpected, relErr);
-
-figure('Name', 'DP_Fiber: Pure Loss', 'Position', [100, 100, 1200, 800]);
-
+figure('Name', 'DP_Fiber: Gaussian (Pure Loss)');
 subplot(2,2,1);
-plot(t*1e9, abs(sigX_in).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(sigX_in).^2, 'b-', 'LineWidth', 1.2); hold on;
 plot(t*1e9, abs(sigX_out).^2, 'r--','LineWidth', 1.2);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('X-Pol: Intensity (Time Domain)');
-legend('Input', 'Output'); grid on;
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('X-Pol Intensity'); legend('Input','Output');
 
 subplot(2,2,2);
-plot(t*1e9, abs(sigY_in).^2,  'b-', 'LineWidth', 1.2); hold on;
+plot(t*1e9, abs(sigY_in).^2, 'b-', 'LineWidth', 1.2); hold on;
 plot(t*1e9, abs(sigY_out).^2, 'r--','LineWidth', 1.2);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('Y-Pol: Intensity (Time Domain)');
-legend('Input', 'Output'); grid on;
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('Y-Pol Intensity'); legend('Input','Output');
 
 subplot(2,2,3);
 specIn  = fftshift(abs(fft(sigX_in)).^2);
 specOut = fftshift(abs(fft(sigX_out)).^2);
-plot(f*1e-9, 10*log10(specIn  + eps), 'b-', 'LineWidth', 1); hold on;
-plot(f*1e-9, 10*log10(specOut + eps), 'r--','LineWidth', 1);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)');
-title('X-Pol: Spectrum');
-legend('Input', 'Output'); grid on; xlim([-200 200]);
+plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-200 200]);
+title('X-Pol Spectrum'); legend('Input','Output');
 
 subplot(2,2,4);
-specIn  = fftshift(abs(fft(sigY_in)).^2);
-specOut = fftshift(abs(fft(sigY_out)).^2);
-plot(f*1e-9, 10*log10(specIn  + eps), 'b-', 'LineWidth', 1); hold on;
-plot(f*1e-9, 10*log10(specOut + eps), 'r--','LineWidth', 1);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)');
-title('Y-Pol: Spectrum');
-legend('Input', 'Output'); grid on; xlim([-200 200]);
+plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-200 200]);
+title('Y-Pol Spectrum'); legend('Input','Output');
 
-sgtitle(sprintf('Pure Loss  (alpha=%.1e dB/m, lSpan=%d km)  |  Attenuation=%.4f (exp=%.4f)  relErr=%.2e', ...
-    alpha_dBpm, lSpan/1e3, ratioMeasured, ratioExpected, relErr));
+sgtitle(sprintf('Gaussian — Pure Loss [%s]', passStr(pass1)));
 
 % ============================================================
-% Figure 2: Pure Dispersion Test
-% Purpose: verify energy conservation and pulse broadening.
-% Expected: energy conserved, pulse broadens in time, spectrum
-%   magnitude unchanged (dispersion is all-pass in frequency).
-% Verification metric: energy relative difference, FWHM change.
+% Figure 2: Single Tone (CW) — Pure Nonlinearity Test
+%
+% PURPOSE: verify energy conservation under pure SPM/XPM.
+%   CW tone has constant |A|^2, so Manakov phase shift is
+%   uniform across all time samples (deterministic rotation).
+%
+% EXPECTED RESULT: energy conserved (gamma is unitary).
+%   Spectrum shows no broadening (pure phase modulation on
+%   a single frequency component preserves the delta spectrum).
+%
+% PASS CRITERION: energy relative difference < 1%.
 % ============================================================
-fprintf('\n=== DP_Fiber: Pure Dispersion Visualization ===\n');
+fprintf('\n--- Signal 2: Single tone (pure NL) ---\n');
 
-[sigX_in, sigY_in]   = readCmat('FiberInput_PureDispersion.dat');
-[sigX_out, sigY_out] = readCmat('FiberOutput_PureDispersion.dat');
+[sigX_in, sigY_in]   = readCmat('Fiber_ToneInput.dat');
+[sigX_out, sigY_out] = readCmat('Fiber_ToneOutput.dat');
 
 energyIn  = sum(abs(sigX_in).^2  + abs(sigY_in).^2);
 energyOut = sum(abs(sigX_out).^2 + abs(sigY_out).^2);
-relDiff   = abs(energyOut - energyIn) / energyIn;
-fprintf('  Energy conservation: relDiff=%.2e  (expected ~0)\n', relDiff);
+eRel = abs(energyOut - energyIn) / energyIn;
+pass2 = eRel < 0.01;
+allPass = allPass && pass2;
+fprintf('  Energy conservation: relDiff=%.2e  [%s]\n', eRel, passStr(pass2));
 
-fwhmInX  = computeFWHM(t, abs(sigX_in).^2);
-fwhmOutX = computeFWHM(t, abs(sigX_out).^2);
-fprintf('  X-Pol FWHM: in=%.1f ps  out=%.1f ps\n', fwhmInX*1e12, fwhmOutX*1e12);
-
-Dispersion = 16.5e-6;  % D [s/m^2], match C++ test default
-
-figure('Name', 'DP_Fiber: Pure Dispersion', 'Position', [150, 150, 1200, 800]);
-
+figure('Name', 'DP_Fiber: CW Tone (Pure NL)');
 subplot(2,2,1);
-plot(t*1e9, abs(sigX_in).^2,  'b-', 'LineWidth', 1.2); hold on;
-plot(t*1e9, abs(sigX_out).^2, 'r--','LineWidth', 1.2);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title(sprintf('X-Pol: Intensity  (FWHM %.0f -> %.0f ps)', fwhmInX*1e12, fwhmOutX*1e12));
-legend('Input', 'Output'); grid on;
+plot(t*1e9, real(sigX_in),  'b-', 'LineWidth', 1); hold on;
+plot(t*1e9, real(sigX_out), 'r--','LineWidth', 1);
+xlabel('Time (ns)'); ylabel('Real Part'); grid on;
+title('X-Pol Waveform (Real)'); legend('Input','Output');
 
 subplot(2,2,2);
-plot(t*1e9, abs(sigY_in).^2,  'b-', 'LineWidth', 1.2); hold on;
-plot(t*1e9, abs(sigY_out).^2, 'r--','LineWidth', 1.2);
-xlabel('Time (ns)'); ylabel('Power (W)');
-title('Y-Pol: Intensity (Time Domain)');
-legend('Input', 'Output'); grid on;
+plot(t*1e9, real(sigY_in),  'b-', 'LineWidth', 1); hold on;
+plot(t*1e9, real(sigY_out), 'r--','LineWidth', 1);
+xlabel('Time (ns)'); ylabel('Real Part'); grid on;
+title('Y-Pol Waveform (Real)'); legend('Input','Output');
 
 subplot(2,2,3);
-magIn  = fftshift(abs(fft(sigX_in)));
-magOut = fftshift(abs(fft(sigX_out)));
-plot(f*1e-9, magIn,  'b-', 'LineWidth', 1); hold on;
-plot(f*1e-9, magOut, 'r--','LineWidth', 1);
-xlabel('Frequency (GHz)'); ylabel('Magnitude');
-title('X-Pol: |Spectrum| (should be identical)');
-legend('Input', 'Output'); grid on; xlim([-200 200]);
+specIn  = fftshift(abs(fft(sigX_in)).^2);
+specOut = fftshift(abs(fft(sigX_out)).^2);
+plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+title('X-Pol Spectrum'); legend('Input','Output');
 
 subplot(2,2,4);
-phaseIn  = fftshift(angle(fft(sigX_in)));
-phaseOut = fftshift(angle(fft(sigX_out)));
-phaseDiff = wrapToPi(phaseOut - phaseIn);
-plot(f*1e-9, phaseDiff, 'k-', 'LineWidth', 1);
-xlabel('Frequency (GHz)'); ylabel('Phase Difference (rad)');
-title('X-Pol: Phase Difference (dispersion signature)'); grid on; xlim([-200 200]);
+plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+title('Y-Pol Spectrum'); legend('Input','Output');
 
-sgtitle(sprintf('Pure Dispersion  (D=%.1e s/m^2, lSpan=%d km)  |  Energy relDiff=%.2e', ...
-    Dispersion, lSpan/1e3, relDiff));
+sgtitle(sprintf('CW Tone — Pure NL [%s]', passStr(pass2)));
 
 % ============================================================
-% Local functions (must be at end of script per MATLAB rules)
+% Figure 3: Dual Tone — Nonlinear Wave Mixing Test
+%
+% PURPOSE: two closely-spaced frequencies test nonlinear
+%   intermodulation.  The non-constant envelope produces
+%   time-varying Manakov phase → frequency mixing.
+%
+% EXPECTED RESULT: after pure NL, intermodulation products
+%   appear at sum/difference frequencies (|f1±f2|, 2f1-f2, etc.).
+%   Energy is conserved (gamma is unitary).
+%
+% PASS CRITERION: spectrum shows the two original tones plus
+%   new frequency components (visual inspection).
+% ============================================================
+fprintf('\n--- Signal 3: Dual tone (pure NL) ---\n');
+
+[sigX_in, sigY_in]   = readCmat('Fiber_DualInput.dat');
+[sigX_out, sigY_out] = readCmat('Fiber_DualOutput.dat');
+
+eIn  = sum(abs(sigX_in).^2  + abs(sigY_in).^2);
+eOut = sum(abs(sigX_out).^2 + abs(sigY_out).^2);
+fprintf('  Energy: in=%.2f  out=%.2f  (should be equal)\n', eIn, eOut);
+
+% Frequencies used in C++: f1=1.5 GHz, f2=2.5 GHz
+f1 = 1.5e9; f2 = 2.5e9;
+fprintf('  Input tones at f1=%.1f GHz, f2=%.1f GHz\n', f1/1e9, f2/1e9);
+fprintf('  Intermodulation products expected at |mf1±nf2|\n');
+
+figure('Name', 'DP_Fiber: Dual Tone (Pure NL)');
+subplot(2,2,1);
+plot(t*1e9, abs(sigX_in).^2, 'b-', 'LineWidth', 1); hold on;
+plot(t*1e9, abs(sigX_out).^2, 'r--','LineWidth', 1);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('X-Pol Intensity'); legend('Input','Output');
+
+subplot(2,2,2);
+plot(t*1e9, abs(sigY_in).^2, 'b-', 'LineWidth', 1); hold on;
+plot(t*1e9, abs(sigY_out).^2, 'r--','LineWidth', 1);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('Y-Pol Intensity'); legend('Input','Output');
+
+subplot(2,2,3);
+specIn  = fftshift(abs(fft(sigX_in)).^2);
+specOut = fftshift(abs(fft(sigX_out)).^2);
+plot(f*1e-9, 10*log10(specIn+eps),  'b-', 'LineWidth', 1.2); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--','LineWidth', 1.0);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-20 20]);
+title('X-Pol Spectrum (look for new mixing products)'); legend('Input','Output');
+
+subplot(2,2,4);
+plot(f*1e-9, 10*log10(specIn+eps),  'b-', 'LineWidth', 1.2); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--','LineWidth', 1.0);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-20 20]);
+title('Y-Pol Spectrum'); legend('Input','Output');
+
+sgtitle('Dual Tone — Pure NL (check spectrum for FWM products)');
+
+% ============================================================
+% Figure 4: QPSK — Full Fiber Propagation Test
+%
+% PURPOSE: verify that a realistic QPSK communication waveform
+%   survives fiber propagation.  This is the most important
+%   test for an optical communication simulator.
+%
+% EXPECTED RESULT: fiber output is distorted (dispersion spreads
+%   pulses, nonlinearity rotates phases).  NMSE between input
+%   and fiber output should be significant (> 0.1).
+%   This is NOT a failure — it confirms the fiber model is
+%   doing something physically meaningful.
+%
+% PASS CRITERION: fiber output has finite energy and differs
+%   measurably from input (NMSE > 0.01 confirms physical effects).
+%   For full verification, run DP_DBPTest.m to confirm DBP
+%   can undo this distortion.
+% ============================================================
+fprintf('\n--- Signal 4: QPSK (full effects) ---\n');
+
+[sigX_in, sigY_in]   = readCmat('Fiber_QPSKInput.dat');
+[sigX_out, sigY_out] = readCmat('Fiber_QPSKOutput.dat');
+
+nmseFiber = computeNMSE(sigX_in, sigY_in, sigX_out, sigY_out);
+% Fiber SHOULD distort the signal — NMSE > 0.01 is expected
+pass4 = nmseFiber > 0.01;
+allPass = allPass && pass4;
+fprintf('  Fiber NMSE vs input: %.4e  [%s]  (> 0.01 confirms distortion)\n', ...
+    nmseFiber, passStr(pass4));
+fprintf('  NOTE: NMSE > 0 means fiber distorts the signal. This is CORRECT.\n');
+fprintf('  Run DP_DBPTest.m to verify DBP can compensate this distortion.\n');
+
+figure('Name', 'DP_Fiber: QPSK (Full Effects)');
+subplot(2,2,1);
+plot(t*1e9, abs(sigX_in).^2, 'b-', 'LineWidth', 1); hold on;
+plot(t*1e9, abs(sigX_out).^2, 'r--','LineWidth', 1);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('X-Pol: Intensity'); legend('Input','Output');
+
+subplot(2,2,2);
+plot(t*1e9, abs(sigY_in).^2, 'b-', 'LineWidth', 1); hold on;
+plot(t*1e9, abs(sigY_out).^2, 'r--','LineWidth', 1);
+xlabel('Time (ns)'); ylabel('Power (W)'); grid on;
+title('Y-Pol: Intensity'); legend('Input','Output');
+
+subplot(2,2,3);
+specIn  = fftshift(abs(fft(sigX_in)).^2);
+specOut = fftshift(abs(fft(sigX_out)).^2);
+plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+title('X-Pol Spectrum'); legend('Input','Output');
+
+subplot(2,2,4);
+plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
+plot(f*1e-9, 10*log10(specOut+eps), 'r--');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+title('Y-Pol Spectrum'); legend('Input','Output');
+
+sgtitle(sprintf('QPSK — Full Fiber [%s]', passStr(pass4)));
+
+% ============================================================
+% Summary
+% ============================================================
+fprintf('\n=== DP_Fiber Visualization Summary ===\n');
+fprintf('  Gaussian (pure loss):   [%s]\n', passStr(pass1));
+fprintf('  CW Tone  (pure NL):     [%s]\n', passStr(pass2));
+fprintf('  Dual Tone (pure NL):    visual inspection\n');
+fprintf('  QPSK      (full fiber): [%s]\n', passStr(pass4));
+fprintf('  Overall: [%s]\n', passStr(allPass));
+
+% ============================================================
+% Local functions (must be at end of script)
 % ============================================================
 
 function [sigX, sigY] = readCmat(filename)
-    % Read cmat (2 x Nt) from .dat file, return column vectors.
-    % .dat format: 2 rows, each with 2*Nt reals (Re,Im alternating).
     data = load(filename);
     Ncols = size(data, 2);
-    NtLocal = Ncols / 2;
     sigX = data(1, 1:2:end).' + 1j * data(1, 2:2:end).';
     sigY = data(2, 1:2:end).' + 1j * data(2, 2:2:end).';
 end
 
-function w = computeFWHM(timeVec, powerVec)
-    % Full-width at half-maximum of a pulse power profile.
-    [pk, idx] = max(powerVec);
-    half = pk / 2;
-    left  = find(powerVec(1:idx) <= half, 1, 'last');
-    right = find(powerVec(idx:end) <= half, 1, 'first');
-    if isempty(left),  left  = 1; end
-    if isempty(right), right = length(powerVec) - idx + 1; end
-    w = timeVec(idx + right - 1) - timeVec(left);
+function nmse = computeNMSE(refX, refY, estX, estY)
+    num = sum(abs(refX - estX).^2 + abs(refY - estY).^2);
+    den = sum(abs(refX).^2      + abs(refY).^2);
+    nmse = num / den;
+end
+
+function s = passStr(flag)
+    if flag, s = 'PASS'; else, s = 'FAIL'; end
 end

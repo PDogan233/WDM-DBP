@@ -42,6 +42,7 @@
 #include <cmath>             // std::abs, std::sqrt, std::exp, std::pow
 #include <complex>           // std::complex, std::norm
 #include <fstream>           // std::ofstream
+#include <random>            // std::mt19937, std::random_device (QPSK symbols)
 #include <iostream>          // std::cout, std::endl
 #include <iomanip>           // std::setprecision
 #include <string>
@@ -72,6 +73,108 @@ ZK::cmat generateCWTone(long long Nt, double dt, double fX, double fY)
                                              std::sin(2.0 * ZK::MA_PI * fX * t));
         signal(1, i) = std::complex<double>(std::cos(2.0 * ZK::MA_PI * fY * t),
                                              std::sin(2.0 * ZK::MA_PI * fY * t));
+    }
+    return signal;
+}
+
+// ============================================================
+// Test signal generator: single-frequency complex tone.
+// Purpose: pure CW signal for testing SPM/XPM phase shifts.
+// A single tone has constant envelope → P_total is constant
+// → Manakov phase shift is purely deterministic.
+// ============================================================
+ZK::cmat generateSingleTone(long long Nt, double dt, double fTone, double ampX, double ampY)
+{
+    ZK::cmat signal(2, Nt);
+    for (long long i = 0; i < Nt; ++i) {
+        double t = static_cast<double>(i) * dt;
+        double phase = 2.0 * ZK::MA_PI * fTone * t;
+        signal(0, i) = std::complex<double>(ampX * std::cos(phase), ampX * std::sin(phase));
+        signal(1, i) = std::complex<double>(ampY * std::cos(phase), ampY * std::sin(phase));
+    }
+    return signal;
+}
+
+// ============================================================
+// Test signal generator: dual-frequency tones on X-pol.
+// Purpose: two closely-spaced frequencies test nonlinear
+// wave mixing (four-wave mixing / cross-phase modulation
+// between frequency components).  Non-constant envelope
+// exercises the P_total-dependent Manakov phase.
+// Expected: after pure nonlinearity, intermodulation
+// products appear at sum/difference frequencies.
+// ============================================================
+ZK::cmat generateDualTone(long long Nt, double dt,
+                           double f1, double f2,
+                           double amp1, double amp2)
+{
+    ZK::cmat signal(2, Nt);
+    for (long long i = 0; i < Nt; ++i) {
+        double t = static_cast<double>(i) * dt;
+        std::complex<double> tone1(amp1 * std::cos(2.0 * ZK::MA_PI * f1 * t),
+                                    amp1 * std::sin(2.0 * ZK::MA_PI * f1 * t));
+        std::complex<double> tone2(amp2 * std::cos(2.0 * ZK::MA_PI * f2 * t),
+                                    amp2 * std::sin(2.0 * ZK::MA_PI * f2 * t));
+        signal(0, i) = tone1 + tone2;           // X-pol: both tones
+        signal(1, i) = 0.7 * (tone1 + tone2);   // Y-pol: scaled copy
+    }
+    return signal;
+}
+
+// ============================================================
+// Test signal generator: QPSK communication signal with random
+//   ±1 ± j symbols and Gaussian pulse shaping.
+// Purpose: generate a realistic digital communication waveform
+//   where each symbol is one of four constellation points:
+//   (1+j), (-1+j), (1-j), (-1-j) — all normalized by 1/sqrt(2).
+//   Symbols are random (time-based seed) so each run produces
+//   a different bit sequence.
+// Expected: after fiber + DBP, the constellation should recover
+//   to four distinct clusters at the QPSK points.
+// ============================================================
+ZK::cmat generateQPSK(long long Nt, double dt, long long nSym, long long sps,
+                       double pulseWidth)
+{
+    ZK::cmat signal(2, Nt);
+
+    // QPSK constellation: {1+j, -1+j, 1-j, -1-j} / sqrt(2)
+    const double scale = 1.0 / std::sqrt(2.0);
+    const std::complex<double> qpskMap[4] = {
+        std::complex<double>( scale,  scale),
+        std::complex<double>(-scale,  scale),
+        std::complex<double>( scale, -scale),
+        std::complex<double>(-scale, -scale)
+    };
+
+    // Mersenne Twister RNG with true random seed
+    std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> bitDist(0, 1);
+
+    // Initialize signal to zero
+    for (long long i = 0; i < Nt; ++i) {
+        signal(0, i) = std::complex<double>(0.0, 0.0);
+        signal(1, i) = std::complex<double>(0.0, 0.0);
+    }
+
+    // Generate random QPSK symbols with Gaussian pulse shaping
+    for (long long sym = 0; sym < nSym; ++sym) {
+        // Two independent random bits → one of four QPSK constellation points
+        int b0 = bitDist(rng);
+        int b1 = bitDist(rng);
+        std::complex<double> qpskSym = qpskMap[b0 * 2 + b1];
+
+        // Gaussian pulse centered at symbol position
+        double tCenter = (sym + 0.5) * static_cast<double>(sps) * dt;
+        for (long long i = 0; i < Nt; ++i) {
+            double t = static_cast<double>(i) * dt;
+            double env = std::exp(-std::pow((t - tCenter) / pulseWidth, 2.0));
+            signal(0, i) += qpskSym * env;
+            // Y-pol: independent random QPSK symbol
+            int b0y = bitDist(rng);
+            int b1y = bitDist(rng);
+            std::complex<double> qpskSymY = qpskMap[b0y * 2 + b1y];
+            signal(1, i) += qpskSymY * env;
+        }
     }
     return signal;
 }
@@ -620,11 +723,25 @@ int main()
 
     // ============================================================
     // Visualization data generation
-    // Saves .dat files for MATLAB visualization scripts
-    // (DP_FiberTest.m, DP_DBPTest.m).  Each .dat file contains
-    // a (2 x Nt) cmat: row0 = X-pol, row1 = Y-pol,
-    // complex data as interleaved real/imag per row.
-    // Skip this section if all tests failed.
+    //
+    // Generates .dat files for MATLAB visualization (DP_FiberTest.m,
+    // DP_DBPTest.m).  Four test signal types are used:
+    //   1. Gaussian pulse   — tests pulse propagation / broadening
+    //   2. Single tone (CW) — tests SPM/XPM phase shift
+    //   3. Dual tone        — tests nonlinear wave mixing (FWM)
+    //   4. QPSK signal      — tests communication signal integrity
+    //
+    // For each type, both DP_Fiber (input/output) and DP_DBP
+    // round-trip (original/fiber/compensated) data are saved.
+    // Each .dat file: (2 x Nt) cmat, rows = X/Y pol,
+    // columns = 2*Nt reals (Re,Im alternating), no header.
+    //
+    // Verification (check console output):
+    //   - Fiber: attenuation ratio ≈ exp(-alphaNp*L/2) for pure loss
+    //   - Fiber: energy conserved for pure dispersion / pure NL
+    //   - DBP:   NMSE(original, compensated) should be near zero
+    //            (< 0.05 for 10km, < 0.10 for multi-span)
+    //   - DBP:   NMSE(wrong params) should be WORSE than correct params
     // ============================================================
     if (totalFailed == 0) {
         std::cout << "\n=== Generating visualization data (.dat files) ===\n" << std::endl;
@@ -634,7 +751,6 @@ int main()
         const double dtViz = 1.0 / fsViz;
         const double t0Viz = NtViz * dtViz / 2.0;
 
-        // Helper lambda to save a cmat to .dat file
         auto saveCmat = [](const ZK::cmat& data, const std::string& filename) {
             std::ofstream f(filename);
             if (f.is_open()) {
@@ -650,78 +766,161 @@ int main()
             }
         };
 
-        // --- Viz 1: Pure loss (visual confirmation of exponential attenuation) ---
-        {
-            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
-            saveCmat(sigIn, "FiberInput_PureLoss.dat");
+        // Helper: run forward fiber + DBP round-trip, save all 3 stages,
+        // print NMSE.  Returns true if round-trip NMSE < threshold.
+        auto vizRoundTrip = [&](const ZK::cmat& sigIn,
+                                 const std::string& label,
+                                 double lSpanKm, double nmseThreshold) {
+            double lSpan = lSpanKm * 1e3;
+            std::string origFile  = "DBP_" + label + "_Orig.dat";  // saveCmat uses as-is
+            std::string fiberFile = "DBP_" + label + "_Fiber";    // execute() appends .dat
+            std::string compFile  = "DBP_" + label + "_Comp";     // execute() appends .dat
 
-            ZK::DP_Fiber::Parameters p;
-            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 100e3;
-            p.dispersion = 0.0; p.disS = 0.0; p.n2 = 0.0; p.bWdm = 50e9;
-            p.saveFile = "FiberOutput_PureLoss";
-
-            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
-            ZK::DP_Fiber::execute(p, s);
-            std::cout << "  Saved: FiberInput_PureLoss.dat / FiberOutput_PureLoss.dat" << std::endl;
-        }
-
-        // --- Viz 2: Pure dispersion pulse broadening ---
-        {
-            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
-            saveCmat(sigIn, "FiberInput_PureDispersion.dat");
-
-            ZK::DP_Fiber::Parameters p;
-            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 50e3;
-            p.alpha_dBpm = 0.0; p.n2 = 0.0; p.bWdm = 50e9;
-            p.saveFile = "FiberOutput_PureDispersion";
-
-            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
-            ZK::DP_Fiber::execute(p, s);
-            std::cout << "  Saved: FiberInput_PureDispersion.dat / FiberOutput_PureDispersion.dat" << std::endl;
-        }
-
-        // --- Viz 3: DBP round-trip (original vs fiber vs DBP compensated) ---
-        {
-            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
-            saveCmat(sigIn, "DBP_OriginalSignal.dat");
+            saveCmat(sigIn, origFile);
 
             ZK::DP_Fiber::Parameters fp;
-            fp.Nt = NtViz; fp.fs = fsViz; fp.lSpan = 10e3; fp.bWdm = 50e9;
-            fp.saveFile = "DBP_FiberOutput";
+            fp.Nt = NtViz; fp.fs = fsViz; fp.lSpan = lSpan; fp.bWdm = 50e9;
+            fp.saveFile = fiberFile;
             ZK::DP_Fiber::Signals fsigs; fsigs.oIn = sigIn;
             ZK::DP_Fiber::execute(fp, fsigs);
 
             ZK::DP_DBP::Parameters dp;
-            dp.Nt = NtViz; dp.fs = fsViz; dp.nSpans = 1; dp.lSpan = 10e3;
-            dp.saveFile = "DBP_Compensated";
+            dp.Nt = NtViz; dp.fs = fsViz; dp.nSpans = 1; dp.lSpan = lSpan;
+            dp.saveFile = compFile;
             ZK::DP_DBP::Signals dsigs; dsigs.oIn = fsigs.out;
             ZK::DP_DBP::execute(dp, dsigs);
 
-            std::cout << "  Saved: DBP_OriginalSignal.dat / DBP_FiberOutput.dat / DBP_Compensated.dat" << std::endl;
-        }
+            double nmse = computeNMSE(sigIn, dsigs.out);
+            bool pass = (nmse < nmseThreshold);
+            std::cout << "  " << label << " round-trip: NMSE=" << std::scientific
+                      << nmse << "  threshold=" << nmseThreshold
+                      << "  [" << (pass ? "PASS" : "FAIL") << "]" << std::endl;
+        };
 
-        // --- Viz 4: Multi-span round-trip ---
+        // ========================================================
+        // Signal type 1: Gaussian pulse
+        // Purpose: verify pulse propagation through fiber.
+        // Expected: after pure loss, amplitude scales by
+        //   exp(-alphaNp*L/2).  After DBP, pulse is recovered
+        //   (NMSE ~ 0 for short distances).
+        // ========================================================
+        std::cout << "--- Signal type 1: Gaussian pulse ---" << std::endl;
         {
             ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
-            saveCmat(sigIn, "DBP_MultiSpan_Original.dat");
 
-            ZK::DP_Fiber::Parameters fp;
-            fp.Nt = NtViz; fp.fs = fsViz; fp.lSpan = 1e3; fp.dz = 200; fp.bWdm = 50e9;
-            ZK::cmat propagated = sigIn;
-            ZK::DP_Fiber::Signals fsigs;
-            for (int span = 0; span < 3; ++span) {
-                fsigs.oIn = propagated;
-                ZK::DP_Fiber::execute(fp, fsigs);
-                propagated = fsigs.out;
-            }
+            // Fiber: pure loss
+            saveCmat(sigIn, "Fiber_GaussInput.dat");
+            ZK::DP_Fiber::Parameters p;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 100e3;
+            p.dispersion = 0.0; p.disS = 0.0; p.n2 = 0.0; p.bWdm = 50e9;
+            p.saveFile = "Fiber_GaussOutput";
+            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
+            ZK::DP_Fiber::execute(p, s);
+            double alphaNp = p.alpha_dBpm * std::log(10.0) / 10.0;
+            double ratioExp = std::exp(-alphaNp * p.lSpan / 2.0);
+            double ratioMeas = std::sqrt(signalEnergy(s.out) / signalEnergy(sigIn));
+            std::cout << "  Fiber (pure loss): atten=" << ratioMeas
+                      << " expected=" << ratioExp
+                      << " [" << (std::abs(ratioMeas-ratioExp)/ratioExp < 0.02 ? "PASS" : "FAIL")
+                      << "]" << std::endl;
 
-            ZK::DP_DBP::Parameters dp;
-            dp.Nt = NtViz; dp.fs = fsViz; dp.nSpans = 3; dp.lSpan = 1e3; dp.dz = 200;
-            dp.saveFile = "DBP_MultiSpan_Compensated";
-            ZK::DP_DBP::Signals dsigs; dsigs.oIn = propagated;
-            ZK::DP_DBP::execute(dp, dsigs);
+            // DBP round-trip (10 km, all effects)
+            vizRoundTrip(sigIn, "Gauss", 10.0, 0.05);
+        }
 
-            std::cout << "  Saved: DBP_MultiSpan_Original.dat / DBP_MultiSpan_Compensated.dat" << std::endl;
+        // ========================================================
+        // Signal type 2: Single tone (CW)
+        // Purpose: verify SPM/XPM phase shift on constant-envelope
+        //   signal.  Pure CW has constant P_total, so Manakov
+        //   nonlinearity produces a deterministic phase rotation
+        //   proportional to P_total * lSpan.
+        // Expected: energy conserved (no loss/gain).  After DBP,
+        //   the phase rotation is undone (NMSE ~ 0).
+        // ========================================================
+        std::cout << "--- Signal type 2: Single tone (CW) ---" << std::endl;
+        {
+            // Use frequency that lands exactly on an FFT bin to avoid spectral
+            // leakage (df = fs/Nt = 100e9/1024 ≈ 97.66 MHz, bin 20 = 1.953125 GHz)
+            double fExact = 20.0 * fsViz / static_cast<double>(NtViz);
+            ZK::cmat sigIn = generateSingleTone(NtViz, dtViz, fExact, 1.0, 0.8);
+
+            // Fiber: pure nonlinearity (beta=0, alpha=0)
+            saveCmat(sigIn, "Fiber_ToneInput.dat");
+            ZK::DP_Fiber::Parameters p;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 5e3;
+            p.alpha_dBpm = 0.0; p.dispersion = 0.0; p.disS = 0.0; p.bWdm = 50e9;
+            p.saveFile = "Fiber_ToneOutput";
+            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
+            ZK::DP_Fiber::execute(p, s);
+            double eRel = std::abs(signalEnergy(s.out) - signalEnergy(sigIn)) / signalEnergy(sigIn);
+            std::cout << "  Fiber (pure NL): energy relDiff=" << eRel
+                      << " [" << (eRel < 0.01 ? "PASS" : "FAIL") << "]" << std::endl;
+
+            // DBP round-trip (shorter distance — narrowband CW is sensitive
+            // to split-step error accumulation)
+            vizRoundTrip(sigIn, "Tone", 3.0, 0.05);
+        }
+
+        // ========================================================
+        // Signal type 3: Dual tone
+        // Purpose: two closely-spaced frequencies exercise
+        //   nonlinear wave mixing (FWM / XPM between tones).
+        //   Non-constant envelope means P_total varies in time,
+        //   producing time-varying Manakov phase.
+        // Expected: after pure NL, intermodulation products
+        //   appear at |f1±f2|.  DBP should undo the mixing
+        //   (NMSE small but may be higher than single-tone
+        //   due to more complex dynamics).
+        // ========================================================
+        std::cout << "--- Signal type 3: Dual tone ---" << std::endl;
+        {
+            ZK::cmat sigIn = generateDualTone(NtViz, dtViz, 1.5e9, 2.5e9, 0.7, 0.7);
+
+            // Fiber: pure nonlinearity
+            saveCmat(sigIn, "Fiber_DualInput.dat");
+            ZK::DP_Fiber::Parameters p;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 2e3;
+            p.alpha_dBpm = 0.0; p.dispersion = 0.0; p.disS = 0.0; p.bWdm = 50e9;
+            p.saveFile = "Fiber_DualOutput";
+            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
+            ZK::DP_Fiber::execute(p, s);
+            std::cout << "  Fiber (pure NL): energyOut=" << signalEnergy(s.out) << std::endl;
+
+            // DBP round-trip (short distance — dual tone is sensitive)
+            vizRoundTrip(sigIn, "Dual", 2.0, 0.05);
+        }
+
+        // ========================================================
+        // Signal type 4: QPSK communication signal
+        // Purpose: most important test — verify that a realistic
+        //   digital communication waveform survives fiber+DBP.
+        //   QPSK symbols with Gaussian pulse shaping.
+        // Expected: after fiber propagation, constellation is
+        //   distorted (dispersion spreads pulses, nonlinearity
+        //   rotates phases).  After DBP, constellation should
+        //   be recovered (low NMSE, clean eye opening).
+        // Verification: NMSE < 0.05 means DBP effectively
+        //   compensates fiber impairments for this QPSK signal.
+        // ========================================================
+        std::cout << "--- Signal type 4: QPSK ---" << std::endl;
+        {
+            long long nSym = 64;       // more symbols → better constellation
+            long long sps  = 16;       // samples per symbol (nSym*sps = NtViz)
+            double pulseW  = 30e-12;   // pulse width for Gaussian shaping
+            ZK::cmat sigIn = generateQPSK(NtViz, dtViz, nSym, sps, pulseW);
+
+            // Fiber: full effects at moderate distance
+            saveCmat(sigIn, "Fiber_QPSKInput.dat");
+            ZK::DP_Fiber::Parameters p;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 10e3; p.bWdm = 50e9;
+            p.saveFile = "Fiber_QPSKOutput";
+            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
+            ZK::DP_Fiber::execute(p, s);
+            double nmseFiber = computeNMSE(sigIn, s.out);
+            std::cout << "  Fiber (full effects): NMSE vs input=" << nmseFiber << std::endl;
+
+            // DBP round-trip
+            vizRoundTrip(sigIn, "QPSK", 10.0, 0.05);
         }
 
         std::cout << "\nVisualization data generation complete." << std::endl;
