@@ -394,9 +394,51 @@ void testDBPRoundTrip(int& passed, int& failed)
     const double fs = 100e9;
     const double dt = 1.0 / fs;
 
-    // --- 3.1: 1-span round-trip ---
+    // --- 3.1: Zero spans (identity check) ---
     {
-        std::string name = "3.1 Round-trip: TX -> Fiber -> DBP (1 span, 10 km)";
+        std::string name = "3.1 Zero spans (nSpans = 0, output == input)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_DBP::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.nSpans = 0;
+        params.lSpan = 100e3;
+
+        ZK::DP_DBP::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_DBP::execute(params, sigs);
+
+        double maxDiff = maxAbsDiff(signal, sigs.out);
+        bool ok = (maxDiff < 1e-12);
+        printResult(name, ok, maxDiff);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 3.2: Clean signal DBP (stability check) ---
+    {
+        std::string name = "3.2 Clean signal DBP (stability, no prior propagation)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_DBP::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.nSpans = 1;
+        params.lSpan = 10e3;
+
+        ZK::DP_DBP::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_DBP::execute(params, sigs);
+
+        double energyOut = signalEnergy(sigs.out);
+        bool ok = std::isfinite(energyOut) && energyOut > 0.0;
+        printResult(name, ok, energyOut);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 3.3: 1-span round-trip ---
+    {
+        std::string name = "3.3 Round-trip: TX -> Fiber -> DBP (1 span, 10 km)";
         ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
 
         ZK::DP_Fiber::Parameters fwdParams;
@@ -427,7 +469,7 @@ void testDBPRoundTrip(int& passed, int& failed)
 
     // --- 3.2: Parameter mismatch (verifies DBP accuracy depends on parameters) ---
     {
-        std::string name = "3.2 DBP parameter mismatch (wrong beta2 -> worse NMSE)";
+        std::string name = "3.4 DBP parameter mismatch (wrong beta2 -> worse NMSE)";
         ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
 
         ZK::DP_Fiber::Parameters fwdParams;
@@ -472,7 +514,7 @@ void testDBPRoundTrip(int& passed, int& failed)
 
     // --- 3.3: Multi-span round-trip ---
     {
-        std::string name = "3.3 Multi-span round-trip (3 spans, 1 km each)";
+        std::string name = "3.5 Multi-span round-trip (3 spans, 1 km each)";
         ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
 
         ZK::DP_Fiber::Parameters fwdParams;
