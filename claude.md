@@ -27,9 +27,13 @@ ZKIC_project/
 ├── .gitignore                 ← Git 忽略规则
 ├── .vscode/                   ← VSCode 配置（c_cpp_properties, tasks, launch, settings）
 │
-├── fiber_WDM.h                ← [待重构] 光纤 WDM 传播类头文件
-├── fiber_WDM.cpp              ← [待重构] 光纤 WDM 传播类实现
-├── fiber_WDM_test.cpp         ← [待重构] 测试程序
+├── SSFM_Core.h/.cpp           ← SSFM 共享计算内核（chooseStep, applyNonlinearity, applyDispersion 等）
+├── DP_Fiber.h/.cpp             ← 前向双偏振光纤传播 Agent (Manakov SSFM)
+├── DP_DBP.h/.cpp               ← 全带数字反向传播 Agent (DBP)
+├── SSFM_SystemTest.cpp         ← 综合测试套件（15 用例，单 main）
+├── fiber_WDM.h_old             ← [已归档] 旧版光纤代码
+├── fiber_WDM.cpp_old           ← [已归档]
+├── fiber_WDM_test.cpp_old      ← [已归档]
 │
 ├── fftw/                      ← FFTW 库（项目内依赖，头文件 + .lib + .dll）
 ├── ZKIC_lib/                  ← ZKIC 数学库 + GlobalValue（项目内依赖）
@@ -267,50 +271,44 @@ public:
 
 **All comments in code must use English** (file headers, class-level doc blocks, function-level doc blocks, inline comments).
 
-**Class-level comment** (after `namespace ZK {`, before class definition):
+**类级注释**（在类定义前，`namespace ZK {` 之后）：
 
 ```
-Agent class functional description: ......
-Example output after execution: .......
+Agent 类的功能描述：......
+Agent 类具体示例执行后的输出：.......
 ```
 
-**Example**:
+**示例**：
 ```
-Agent class functional description: Simulates laser output signal generation.
-Based on input Parameters (wavelength, output power, number of sample points,
-phase, linewidth, etc.), generates a complex vector signals.out of corresponding length.
+Agent 类的功能描述：实现激光器输出信号的模拟。根据输入的 Parameters（如波长、输出功率、
+采样点数、相位、线宽等），生成对应长度的复数向量 signals.oOut。
 
-Example output after execution: Generates a complex optical field vector
-signals.out of length params.Npoints according to the input Parameters.
-```
-
-**Static member function comment** (in .cpp file, before each function definition):
-
-```
-Static member function name: void ClassName::execute(const Parameters& params, Signals& signals)
-
-Input:
-  params  // ClassName::Parameters, key fields and their meanings
-  signals // ClassName::Signals, input signal fields
-
-Output: void (no return value), output signals stored in signals.xxx
-
-Functional description: ......
+Agent 类示例执行后的输出：根据所输入的 Parameters，生成长度为 Npoints 的复数光场向量
+signals.oOut。
 ```
 
-**Example**:
+**静态成员函数注释**（在 .cpp 文件中每个函数定义前）：
+
 ```
-Static member function name: void Laser::execute(const Parameters& params, Signals& signals)
+静态成员函数名称：void ClassName::execute(const Parameters& params, Signals& signals)
+静态成员函数的输入：params // 类型 ClassName::Parameters，包含的字段（列出关键字段及含义）
+                    signals // 类型 ClassName::Signals，输入信号字段
+静态成员函数的输出：无返回值 void，输出信号储存在 signals.xxx 中
+静态成员函数实现的功能描述：......
+```
 
-Input:
-  params  // Laser::Parameters, containing laser parameters (wavelength lamda,
-          // power P, phase, Npoints samples, linewidth LW, sampling interval
-          // deltaT, speed of light cLight, frequency offset FO, etc.)
+**示例**：
+```
+静态成员函数名称：void Laser::execute(const Parameters& params, Signals& signals)
 
-Output: void (no return value), laser output signal stored in signals.out
+静态成员函数的输入：
+  params // 类型 Laser::Parameters，包含激光器的参数（波长 lamda、功率 P、相位 phase、
+         采样点数 Npoints、线宽 LW、采样间隔 deltaT、光速 cLight、频率偏移 FO 等）
 
-Functional description: Based on input params, generates a complex optical field
-vector signals.out of length params.Npoints.
+静态成员函数的输出：无返回值 void，输出 laser 信号储存在 signals.oOut 中
+
+静态成员函数实现的功能描述：根据输入参数 params，生成长度为 params.Npoints 的复数光场向量
+signals.oOut。
 ```
 
 ### 3.5 ZK 数学库类型速查
@@ -583,36 +581,38 @@ for span in reverse(Nspans):
 
 ---
 
-## 5. 现有 C++ 代码分析与待重构项 (fiber_WDM.*)
+## 5. 现有 C++ 代码架构 (v5.0)
 
-### 5.1 现有架构
+旧 `fiber_WDM.*` 已归档为 `*_old`。当前架构包含 3 个模块：
 
-- **FiberWDM 类**：构造函数接受物理参数 + 采样参数
-- **propagate()**: 主 SSFM 循环（仅单跨段，无 EDFA）
-- **applyDispersion()**: 频域色散（使用 FFTW）
-- **applyNonlinearity()**: 时域 Kerr 非线性
-- **chooseStep()**: 支持 constant/local_error/global_error
-- **fft/ifft/fftshift/ifftshift**: FFTW 封装
+### 5.1 SSFM_Core（共享计算内核，非 Agent）
 
-### 5.2 需要重构的问题
+- 无 Parameters/Signals/execute — 纯工具类
+- `computeFiberPhysics()`: D/S/n2/Aeff/λ₀ → β1/β2/β3/γ/α_np
+- `buildFrequencyContext()`: 构建 fftshift 频率网格 + 预计算 β(ω)
+- `chooseStep()`: 三种自适应步长控制 (constant/local_error/global_error)
+- `applyNonlinearity()`: Manakov 非线性相位旋转 (8/9 因子 + 交叉相位调制)
+- `applyDispersion()`: 频域色散+损耗 (ZK::fftC2C/ifftC2C 管道)
 
-| 问题                  | 严重程度           | 说明                                                      |
-| --------------------- | ------------------ | --------------------------------------------------------- |
-| 缺少公司文件头        | **必须**     | 无 Copyright、无 @file、无 Revision History               |
-| 不在 ZK 命名空间      | **必须**     | 所有类需要在 `namespace ZK` 中                          |
-| 不使用 ZK 数学库类型  | **必须**     | 使用 `std::vector<std::complex<double>>` 而非 `cvec`  |
-| 不遵循 Agent 模式     | **必须**     | 没有 Parameters/Signals 结构体，没有 static execute()     |
-| 缺少 Manakov 8/9 因子 | **关键 BUG** | applyNonlinearity 直接使用 gamma，Python 中为 (8/9)*gamma |
-| 仅支持单偏振          | **必须**     | 需支持 X/Y 双偏振                                         |
-| 硬编码 CSV 调试输出   | **需清理**   | applyDispersion 中 static bool saved 写 CSV               |
-| 中文注释缺失          | **需补充**   | 函数注释应为中文                                          |
+### 5.2 DP_Fiber（前向光纤传播 Agent）
 
-### 5.3 重构目标
+- Agent 模式：Parameters (物理+数值+采样) + Signals (oIn/out, cmat 2×Nt)
+- `execute()`: 对称 SSFM (Strang splitting) — NL(h/2)→Disp(h)→NL(h/2)
+- `checkParam()`: 参数合法性验证
+- .dat 文件输出（复数实虚交替，无表头）
+- 不含 EDFA、PMD
 
-- **类名**：`DP_Fiber`（光纤传播）、`DP_DBP`（数字反向传播）— 暂定
-- **范围**：双偏振 SSFM + DBP，不含 PMD 和 EDFA
-- **参数**：当前用独立变量，命名和结构兼容 GlobalValue Band 字段（为后续迁移做准备）
-- **优先级**：先重构 fiber_WDM → `DP_Fiber`，再实现 `DP_DBP`
+### 5.3 DP_DBP（数字反向传播 Agent）
+
+- 全带 DBP：反向跨段循环 + h<0 自动反转色散/非线性符号
+- 与 DP_Fiber 共享 SSFM_Core 内核，仅 h 符号不同
+- 支持多跨段 (nSpans)，EDFA 增益移除 (gLin)
+- .dat 文件输出
+
+### 5.4 测试
+
+- `DP_FiberTest.cpp`: SSFM_Core 5 测试 + DP_Fiber 5 测试 + DBP 3 往返测试 (13/13 通过)
+- `DP_DBPTest.cpp_archive`: DP_DBP 独立测试套件 (5 测试)，重命名为 .cpp 激活
 
 ---
 
@@ -1299,9 +1299,9 @@ std::string ver = itpp_version();   // IT++ 库版本号
 - [X] 构建验证通过，可正常运行
 - [X] ZKIC 公司库 API 文档整理（GlobalValue + 数学库全部头文件 + CHM 手册）
 - [X] 技术决策确认（DP_Fiber/DP_DBP 命名、双偏振、参数方式、gitignore 策略）
-- [ ] 重构 fiber_WDM → `DP_Fiber`（Agent 模式 + ZK 类型 + Manakov 修正 + 双偏振）
-- [ ] 实现 `DP_DBP`（独立 Agent 类）
-- [ ] 后续（按需）：EDFA、PMD、GlobalValue 迁移
+- [X] 重构 fiber_WDM → `SSFM_Core` + `DP_Fiber` + `DP_DBP`（Agent 模式 + ZK 类型 + Manakov 修正 + 双偏振）
+- [X] `SSFM_SystemTest.cpp` 测试套件（15/15 通过：SSFM_Core 5 + DP_Fiber 5 + DP_DBP 5）
+- [ ] 后续（按需）：EDFA、PMD、GlobalValue 迁移、MATLAB 可视化脚本、测试文档
 
 ---
 

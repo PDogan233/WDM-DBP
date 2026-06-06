@@ -1,0 +1,535 @@
+/*******************************************************************************
+ * Copyright (c) 2026 Shaoxing Zhike Electro-Optics Computing Co. Ltd. All rights reserved.
+ * Confidential and proprietary information.
+ * Unauthorized copying, reproduction, or distribution of this software
+ * is strictly prohibited.
+ ******************************************************************************/
+
+/**
+ * @file: DP_FiberTest.cpp
+ * @brief: Test suite for SSFM_Core utility kernels and DP_Fiber Agent.
+ *         Covers fiber physics parameter derivation, frequency context,
+ *         step-size control, Manakov nonlinearity, dispersion, and forward
+ *         fiber propagation under various physical regimes.
+ * @author: Jiahao Zhang
+ * @version: 1.0.0
+ * @date: 2026-06-06
+ * @department: Research and Development Department
+ * @project: ZKIC Agents Development
+ */
+
+/**
+ * Revision History:
+ * * Version    Author          Date          Changes
+ * -----------------------------------------------------------------------------
+ * 1.0.0      Jiahao Zhang    2026-06-06    Initial version
+ */
+
+#include "SSFM_Core.h"
+#include "DP_Fiber.h"
+#include "DP_DBP.h"
+
+#include <common_values.h>   // ZK::PHY_C, ZK::MA_PI
+#include <converters.h>      // ZK::to_cvec
+#include <elem_math.h>       // ZK::sqr
+#include <fft.h>             // ZK::fftC2C, ZK::ifftC2C
+#include <log_exp.h>         // ZK::exp
+#include <specmat.h>         // ZK::linspace
+#include <trig_hyp.h>        // ZK::cos, ZK::sin
+#include <vec.h>             // ZK::vec, ZK::cvec
+#include <mat.h>             // ZK::cmat
+
+#include <cmath>             // std::abs, std::sqrt, std::exp, std::pow
+#include <complex>           // std::complex, std::norm
+#include <iostream>          // std::cout, std::endl
+#include <iomanip>           // std::setprecision
+#include <string>
+
+// ============================================================
+// Test helpers
+// ============================================================
+ZK::cmat generateGaussianPulse(long long Nt, double dt,
+                                double t0, double T,
+                                double ampX, double ampY)
+{
+    ZK::cmat signal(2, Nt);
+    for (long long i = 0; i < Nt; ++i) {
+        double t = static_cast<double>(i) * dt;
+        double env = std::exp(-std::pow((t - t0) / T, 2.0));
+        signal(0, i) = std::complex<double>(ampX * env, 0.0);
+        signal(1, i) = std::complex<double>(ampY * env, 0.0);
+    }
+    return signal;
+}
+
+ZK::cmat generateCWTone(long long Nt, double dt, double fX, double fY)
+{
+    ZK::cmat signal(2, Nt);
+    for (long long i = 0; i < Nt; ++i) {
+        double t = static_cast<double>(i) * dt;
+        signal(0, i) = std::complex<double>(std::cos(2.0 * ZK::MA_PI * fX * t),
+                                             std::sin(2.0 * ZK::MA_PI * fX * t));
+        signal(1, i) = std::complex<double>(std::cos(2.0 * ZK::MA_PI * fY * t),
+                                             std::sin(2.0 * ZK::MA_PI * fY * t));
+    }
+    return signal;
+}
+
+double maxAbsDiff(const ZK::cmat& a, const ZK::cmat& b)
+{
+    double maxDiff = 0.0;
+    for (int r = 0; r < a.rows(); ++r) {
+        for (int c = 0; c < a.cols(); ++c) {
+            double diff = std::abs(a(r, c) - b(r, c));
+            if (diff > maxDiff) maxDiff = diff;
+        }
+    }
+    return maxDiff;
+}
+
+double computeNMSE(const ZK::cmat& ref, const ZK::cmat& est)
+{
+    double num = 0.0, den = 0.0;
+    for (int r = 0; r < ref.rows(); ++r) {
+        for (int c = 0; c < ref.cols(); ++c) {
+            double d = std::abs(ref(r, c) - est(r, c));
+            num += d * d;
+            den += std::norm(ref(r, c));
+        }
+    }
+    return (den > 0.0) ? num / den : 0.0;
+}
+
+double signalEnergy(const ZK::cmat& sig)
+{
+    double energy = 0.0;
+    for (int r = 0; r < sig.rows(); ++r) {
+        for (int c = 0; c < sig.cols(); ++c) {
+            energy += std::norm(sig(r, c));
+        }
+    }
+    return energy;
+}
+
+void printResult(const std::string& testName, bool passed, double metric = -1.0)
+{
+    const char* status = passed ? "PASS" : "FAIL";
+    std::cout << "  [" << status << "] " << testName;
+    if (metric >= 0.0) {
+        std::cout << "  (metric = " << std::scientific << std::setprecision(4)
+                  << metric << ")";
+    }
+    std::cout << std::endl;
+}
+
+// ============================================================
+// Test group 1: SSFM_Core unit tests
+// ============================================================
+void testSSFMCore(int& passed, int& failed)
+{
+    std::cout << "\n=== Test Group 1: SSFM_Core Unit Tests ===\n" << std::endl;
+
+    // --- 1.1: computeFiberPhysics ---
+    {
+        std::string name = "1.1 computeFiberPhysics (derived parameters)";
+        ZK::FiberPhysics phys;
+        ZK::SSFM_Core::computeFiberPhysics(
+            0.2e-3, 1.47, 16.5e-6, 0.08e3,
+            2.6e-20, 80e-12, 1550e-9, phys);
+
+        double beta1_expected = 1.47 / 299792458.0;
+        double beta2_expected = -16.5e-6 * (1550e-9*1550e-9) / (2.0*ZK::MA_PI*299792458.0);
+        double gamma_expected = 2.0*ZK::MA_PI*2.6e-20 / (1550e-9*80e-12);
+        double alphaNp_expected = 0.2e-3 * std::log(10.0) / 10.0;
+
+        bool ok = true;
+        ok &= std::abs(phys.beta1 - beta1_expected) / std::abs(beta1_expected) < 0.01;
+        ok &= std::abs(phys.beta2 - beta2_expected) / std::abs(beta2_expected) < 0.01;
+        ok &= std::abs(phys.gamma - gamma_expected) / std::abs(gamma_expected) < 0.01;
+        ok &= std::abs(phys.alphaNp - alphaNp_expected) / std::abs(alphaNp_expected) < 0.01;
+
+        printResult(name, ok);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 1.2: buildFrequencyContext ---
+    {
+        std::string name = "1.2 buildFrequencyContext (grid properties)";
+        long long Nt = 256;
+        double fs = 100e9;
+        ZK::FrequencyContext ctx;
+        ZK::SSFM_Core::buildFrequencyContext(Nt, fs, -2.0e-26, 0.0, ctx);
+
+        bool ok = true;
+        ok &= (ctx.freq.size() == Nt);
+        ok &= std::abs(ctx.df - fs / Nt) < 1e-6;
+        ok &= std::abs(ctx.freq(0) - (-fs / 2.0)) / (fs / 2.0) < 0.01;
+        ok &= std::abs(ctx.freq(Nt - 1) - (fs / 2.0 - ctx.df)) / ctx.df < 0.01;
+        // betaOmega is even: check symmetry for pairs (i, Nt-i)
+        bool sym = true;
+        for (long long i = 1; i < Nt / 2; ++i) {
+            if (std::abs(ctx.betaOmega(i) - ctx.betaOmega(Nt - i)) > 1e-12) {
+                sym = false;
+                break;
+            }
+        }
+        ok &= sym;
+
+        printResult(name, ok);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 1.3: chooseStep constant mode ---
+    {
+        std::string name = "1.3 chooseStep (constant mode)";
+        long long Nt = 64;
+        ZK::cmat y(2, Nt);
+        for (int r = 0; r < 2; ++r)
+            for (int c = 0; c < Nt; ++c)
+                y(r, c) = std::complex<double>(1.0, 0.0);
+
+        double h = ZK::SSFM_Core::chooseStep(
+            "constant", 2e3, 100e3, 0.0, 1e3, y, 1.0, -2e-26, 150e9);
+        bool ok = (std::abs(h - 2e3) < 1e-9);
+        printResult(name, ok);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 1.4: applyNonlinearity (Manakov) ---
+    {
+        std::string name = "1.4 applyNonlinearity (Manakov phase check)";
+        long long Nt = 2;
+        ZK::cmat yIn(2, Nt);
+        yIn(0, 0) = std::complex<double>(1.0, 0.0);
+        yIn(0, 1) = std::complex<double>(0.5, 0.0);
+        yIn(1, 0) = std::complex<double>(0.0, 0.0);
+        yIn(1, 1) = std::complex<double>(0.3, 0.0);
+
+        ZK::cmat yOut(2, Nt);
+        ZK::SSFM_Core::applyNonlinearity(yIn, 1.0, 1.0, yOut);
+
+        double phi0 = -(8.0 / 9.0);
+        std::complex<double> expected00 = std::polar(1.0, phi0);
+        double diff0 = std::abs(yOut(0, 0) - expected00);
+
+        double phi1 = -(8.0 / 9.0) * 0.34;
+        std::complex<double> expected01 = std::polar(0.5, phi1);
+        std::complex<double> expected11 = std::polar(0.3, phi1);
+        double diff1 = std::abs(yOut(0, 1) - expected01);
+        double diff2 = std::abs(yOut(1, 1) - expected11);
+
+        bool ok = (diff0 < 1e-12) && (diff1 < 1e-12) && (diff2 < 1e-12);
+        printResult(name, ok, diff0 + diff1 + diff2);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 1.5: applyDispersion round-trip ---
+    {
+        std::string name = "1.5 applyDispersion (FFT round-trip fidelity)";
+        long long Nt = 256;
+        double fs = 100e9;
+        double dt = 1.0 / fs;
+        double t0 = Nt * dt / 2.0;
+        ZK::cmat yIn = generateGaussianPulse(Nt, dt, t0, 50e-12, 1.0, 0.7);
+
+        ZK::FrequencyContext ctx;
+        ZK::SSFM_Core::buildFrequencyContext(Nt, fs, 0.0, 0.0, ctx);
+
+        ZK::cmat yMid(2, Nt);
+        ZK::cmat yOut(2, Nt);
+        ZK::SSFM_Core::applyDispersion(yIn, ctx.betaOmega, 0.0, 1.0, yMid);
+        ZK::SSFM_Core::applyDispersion(yMid, ctx.betaOmega, 0.0, -1.0, yOut);
+
+        double maxDiff = maxAbsDiff(yIn, yOut);
+        bool ok = (maxDiff < 1e-12);
+        printResult(name, ok, maxDiff);
+        if (ok) ++passed; else ++failed;
+    }
+}
+
+// ============================================================
+// Test group 2: DP_Fiber tests
+// ============================================================
+void testDPFiber(int& passed, int& failed)
+{
+    std::cout << "\n=== Test Group 2: DP_Fiber Tests ===\n" << std::endl;
+
+    const long long Nt = 1024;
+    const double fs = 100e9;
+    const double dt = 1.0 / fs;
+
+    // --- 2.1: Zero propagation ---
+    {
+        std::string name = "2.1 Zero propagation (lSpan = 0)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.lSpan = 0.0;
+        params.alpha_dBpm = 0.0;
+        params.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_Fiber::execute(params, sigs);
+
+        double maxDiff = maxAbsDiff(signal, sigs.out);
+        bool ok = (maxDiff < 1e-12);
+        printResult(name, ok, maxDiff);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 2.2: Pure loss ---
+    {
+        std::string name = "2.2 Pure loss (gamma=0, beta2/3=0)";
+        double alpha_dBpm = 0.2e-3;
+        double L = 100e3;
+        double alphaNp = alpha_dBpm * std::log(10.0) / 10.0;
+
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.lSpan = L;
+        params.alpha_dBpm = alpha_dBpm;
+        params.dispersion = 0.0;
+        params.disS = 0.0;
+        params.n2 = 0.0;
+        params.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_Fiber::execute(params, sigs);
+
+        double expectedAtten = std::exp(-alphaNp * L / 2.0);
+        double energyIn = signalEnergy(signal);
+        double energyOut = signalEnergy(sigs.out);
+        double ratio = std::sqrt(energyOut / energyIn);
+        bool ok = std::abs(ratio - expectedAtten) / expectedAtten < 0.02;
+        printResult(name, ok, std::abs(ratio - expectedAtten));
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 2.3: Pure dispersion (energy conservation) ---
+    {
+        std::string name = "2.3 Pure dispersion (gamma=0, alpha=0)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.lSpan = 50e3;
+        params.alpha_dBpm = 0.0;
+        params.n2 = 0.0;
+        params.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_Fiber::execute(params, sigs);
+
+        double relDiff = std::abs(signalEnergy(sigs.out) - signalEnergy(signal))
+                       / signalEnergy(signal);
+        bool ok = (relDiff < 0.01);
+        printResult(name, ok, relDiff);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 2.4: Pure nonlinearity (SPM energy conservation) ---
+    {
+        std::string name = "2.4 Pure nonlinearity (SPM phase on CW)";
+        ZK::cmat signal = generateCWTone(Nt, dt, 1e9, 2e9);
+
+        ZK::DP_Fiber::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.lSpan = 1e3;
+        params.alpha_dBpm = 0.0;
+        params.dispersion = 0.0;
+        params.disS = 0.0;
+        params.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_Fiber::execute(params, sigs);
+
+        double relDiff = std::abs(signalEnergy(sigs.out) - signalEnergy(signal))
+                       / signalEnergy(signal);
+        bool ok = (relDiff < 0.01);
+        printResult(name, ok, relDiff);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 2.5: Full effects (stability) ---
+    {
+        std::string name = "2.5 Full effects (all physics enabled)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters params;
+        params.Nt = Nt;
+        params.fs = fs;
+        params.lSpan = 10e3;
+        params.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals sigs;
+        sigs.oIn = signal;
+        ZK::DP_Fiber::execute(params, sigs);
+
+        double energyOut = signalEnergy(sigs.out);
+        bool ok = std::isfinite(energyOut) && energyOut > 0.0;
+        printResult(name, ok, energyOut);
+        if (ok) ++passed; else ++failed;
+    }
+}
+
+// ============================================================
+// Test group 3: DP_DBP round-trip tests
+// ============================================================
+void testDBPRoundTrip(int& passed, int& failed)
+{
+    std::cout << "\n=== Test Group 3: DP_DBP Round-Trip Tests ===\n" << std::endl;
+
+    const long long Nt = 1024;
+    const double fs = 100e9;
+    const double dt = 1.0 / fs;
+
+    // --- 3.1: 1-span round-trip ---
+    {
+        std::string name = "3.1 Round-trip: TX -> Fiber -> DBP (1 span, 10 km)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters fwdParams;
+        fwdParams.Nt = Nt;
+        fwdParams.fs = fs;
+        fwdParams.lSpan = 10e3;
+        fwdParams.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals fwdSigs;
+        fwdSigs.oIn = signal;
+        ZK::DP_Fiber::execute(fwdParams, fwdSigs);
+
+        ZK::DP_DBP::Parameters dbpParams;
+        dbpParams.Nt = Nt;
+        dbpParams.fs = fs;
+        dbpParams.nSpans = 1;
+        dbpParams.lSpan = 10e3;
+
+        ZK::DP_DBP::Signals dbpSigs;
+        dbpSigs.oIn = fwdSigs.out;
+        ZK::DP_DBP::execute(dbpParams, dbpSigs);
+
+        double nmse = computeNMSE(signal, dbpSigs.out);
+        bool ok = (nmse < 0.05);
+        printResult(name, ok, nmse);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 3.2: Parameter mismatch (verifies DBP accuracy depends on parameters) ---
+    {
+        std::string name = "3.2 DBP parameter mismatch (wrong beta2 -> worse NMSE)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters fwdParams;
+        fwdParams.Nt = Nt;
+        fwdParams.fs = fs;
+        fwdParams.lSpan = 10e3;
+        fwdParams.bWdm = 50e9;
+
+        ZK::DP_Fiber::Signals fwdSigs;
+        fwdSigs.oIn = signal;
+        ZK::DP_Fiber::execute(fwdParams, fwdSigs);
+
+        // DBP with wrong dispersion
+        ZK::DP_DBP::Parameters dbpWrong;
+        dbpWrong.Nt = Nt;
+        dbpWrong.fs = fs;
+        dbpWrong.nSpans = 1;
+        dbpWrong.lSpan = 10e3;
+        dbpWrong.dispersion = 16.5e-6 * 2.0;
+
+        ZK::DP_DBP::Signals dbpSigsWrong;
+        dbpSigsWrong.oIn = fwdSigs.out;
+        ZK::DP_DBP::execute(dbpWrong, dbpSigsWrong);
+        double nmseWrong = computeNMSE(signal, dbpSigsWrong.out);
+
+        // DBP with correct parameters
+        ZK::DP_DBP::Parameters dbpCorrect;
+        dbpCorrect.Nt = Nt;
+        dbpCorrect.fs = fs;
+        dbpCorrect.nSpans = 1;
+        dbpCorrect.lSpan = 10e3;
+
+        ZK::DP_DBP::Signals dbpSigsCorrect;
+        dbpSigsCorrect.oIn = fwdSigs.out;
+        ZK::DP_DBP::execute(dbpCorrect, dbpSigsCorrect);
+        double nmseCorrect = computeNMSE(signal, dbpSigsCorrect.out);
+
+        bool ok = (nmseWrong > nmseCorrect * 1.5);
+        printResult(name, ok, nmseWrong);
+        if (ok) ++passed; else ++failed;
+    }
+
+    // --- 3.3: Multi-span round-trip ---
+    {
+        std::string name = "3.3 Multi-span round-trip (3 spans, 1 km each)";
+        ZK::cmat signal = generateGaussianPulse(Nt, dt, Nt*dt/2.0, 100e-12, 1.0, 0.8);
+
+        ZK::DP_Fiber::Parameters fwdParams;
+        fwdParams.Nt = Nt;
+        fwdParams.fs = fs;
+        fwdParams.lSpan = 1e3;
+        fwdParams.dz = 200;
+        fwdParams.bWdm = 50e9;
+
+        ZK::cmat propagated = signal;
+        ZK::DP_Fiber::Signals fwdSigs;
+        for (int span = 0; span < 3; ++span) {
+            fwdSigs.oIn = propagated;
+            ZK::DP_Fiber::execute(fwdParams, fwdSigs);
+            propagated = fwdSigs.out;
+        }
+
+        ZK::DP_DBP::Parameters dbpParams;
+        dbpParams.Nt = Nt;
+        dbpParams.fs = fs;
+        dbpParams.nSpans = 3;
+        dbpParams.lSpan = 1e3;
+        dbpParams.dz = 200;
+
+        ZK::DP_DBP::Signals dbpSigs;
+        dbpSigs.oIn = propagated;
+        ZK::DP_DBP::execute(dbpParams, dbpSigs);
+
+        double nmse = computeNMSE(signal, dbpSigs.out);
+        bool ok = (nmse < 0.10);
+        printResult(name, ok, nmse);
+        if (ok) ++passed; else ++failed;
+    }
+}
+
+// ============================================================
+// Main
+// ============================================================
+int main()
+{
+    int totalPassed = 0;
+    int totalFailed = 0;
+
+    std::cout << "==============================================" << std::endl;
+    std::cout << "  DP_Fiber Test Suite" << std::endl;
+    std::cout << "  SSFM_Core + DP_Fiber + DP_DBP Round-Trip" << std::endl;
+    std::cout << "==============================================" << std::endl;
+
+    testSSFMCore(totalPassed, totalFailed);
+    testDPFiber(totalPassed, totalFailed);
+    testDBPRoundTrip(totalPassed, totalFailed);
+
+    std::cout << "\n==============================================" << std::endl;
+    std::cout << "  Results: " << totalPassed << " passed, "
+              << totalFailed << " failed  ("
+              << totalPassed + totalFailed << " total)" << std::endl;
+    std::cout << "==============================================" << std::endl;
+
+    return (totalFailed == 0) ? 0 : 1;
+}

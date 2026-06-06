@@ -40,7 +40,7 @@ namespace ZK {
 struct FrequencyContext {
     vec freq;        // frequency grid in fftshift order [Hz], length Nt
     vec omega;       // angular frequency grid [rad/s]
-    vec beta_omega;  // beta(omega) = 0.5*beta2*omega^2 + beta3*omega^3/6
+    vec betaOmega;  // beta(omega) = 0.5*beta2*omega^2 + beta3*omega^3/6
     double df;       // frequency spacing [Hz] = fs / Nt
 };
 
@@ -54,7 +54,7 @@ struct FiberPhysics {
     double beta2;       // 2nd-order dispersion (GVD) [s^2/m]
     double beta3;       // 3rd-order dispersion (dispersion slope) [s^3/m]
     double gamma;       // nonlinear coefficient [1/W/m]
-    double alpha_np;    // attenuation coefficient [Neper/m] = ln(10^(alpha_dB/10))
+    double alphaNp;     // attenuation coefficient [Neper/m] = ln(10^(alpha_dB/10))
 };
 
 // ============================================================
@@ -73,9 +73,9 @@ public:
         double alpha_dBpm,
         double groupRef,
         double dispersion,      // D  [s/m^2]
-        double dis_S,           // S  [s/m^3]
+        double disS,            // S  [s/m^3]
         double n2,              // nonlinear refractive index [m^2/W]
-        double Aeff,            // effective area [m^2]
+        double aEff,            // effective area [m^2]
         double lambda0,         // reference wavelength [m]
         FiberPhysics& out);
 
