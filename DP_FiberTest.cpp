@@ -41,6 +41,7 @@
 
 #include <cmath>             // std::abs, std::sqrt, std::exp, std::pow
 #include <complex>           // std::complex, std::norm
+#include <fstream>           // std::ofstream
 #include <iostream>          // std::cout, std::endl
 #include <iomanip>           // std::setprecision
 #include <string>
@@ -124,6 +125,18 @@ void printResult(const std::string& testName, bool passed, double metric = -1.0)
 
 // ============================================================
 // Test group 1: SSFM_Core unit tests
+//
+// These tests validate the shared SSFM computation kernels in
+// isolation, without invoking the full Agent execute() pipeline.
+// Each test checks a single static method against a hand-computed
+// expected value or a known mathematical property.
+//
+// Verification:
+//   - Tests 1.1-1.4: metrics are absolute or relative errors;
+//     a passing test means the error is below the tolerance.
+//   - Test 1.5: metric is the max absolute difference after an
+//     FFT forward/backward round-trip; should be near zero.
+//   - For visual confirmation, see DP_FiberTest.m (MATLAB).
 // ============================================================
 void testSSFMCore(int& passed, int& failed)
 {
@@ -248,7 +261,21 @@ void testSSFMCore(int& passed, int& failed)
 }
 
 // ============================================================
-// Test group 2: DP_Fiber tests
+// Test group 2: DP_Fiber Agent tests
+//
+// These tests validate DP_Fiber::execute() under controlled
+// physical regimes.  Each test isolates one physical effect
+// (loss, dispersion, nonlinearity) by zeroing the others, then
+// a final test enables all effects together.
+//
+// Verification:
+//   - Test 2.1: maxAbsDiff should be exactly 0 (no propagation).
+//   - Test 2.2: energy ratio should match exp(-alphaNp * L).
+//   - Test 2.3: energy conserved (dispersion is lossless).
+//   - Test 2.4: energy conserved (SPM is lossless).
+//   - Test 2.5: energyOut is finite and positive (no crash).
+//   - For visual confirmation, run DP_FiberTest.m in MATLAB
+//     after the C++ test generates the .dat files.
 // ============================================================
 void testDPFiber(int& passed, int& failed)
 {
@@ -385,6 +412,24 @@ void testDPFiber(int& passed, int& failed)
 
 // ============================================================
 // Test group 3: DP_DBP round-trip tests
+//
+// These tests validate the full TX -> Fiber -> DBP pipeline.
+// The core principle: DBP with matching parameters should exactly
+// reverse fiber propagation (within split-step numerical error).
+//
+// Verification:
+//   - Test 3.1: identity check — nSpans=0 means no processing.
+//   - Test 3.2: stability check — DBP on clean signal runs
+//     without NaN/Inf (it applies "negative fiber" to a clean
+//     signal, so output differs from input — that's expected).
+//   - Test 3.3 (CORE): round-trip NMSE should be near zero
+//     (~1e-25 with 10km, confirming DBP cancels fiber effects).
+//   - Test 3.4: wrong beta2 in DBP produces WORSE NMSE than
+//     correct beta2 (validates DBP accuracy depends on knowing
+//     the fiber parameters).
+//   - Test 3.5: multi-span DBP NMSE should be near zero
+//     (~1e-28 with fine step size).
+//   - For visual confirmation, run DP_DBPTest.m in MATLAB.
 // ============================================================
 void testDBPRoundTrip(int& passed, int& failed)
 {
@@ -572,6 +617,116 @@ int main()
               << totalFailed << " failed  ("
               << totalPassed + totalFailed << " total)" << std::endl;
     std::cout << "==============================================" << std::endl;
+
+    // ============================================================
+    // Visualization data generation
+    // Saves .dat files for MATLAB visualization scripts
+    // (DP_FiberTest.m, DP_DBPTest.m).  Each .dat file contains
+    // a (2 x Nt) cmat: row0 = X-pol, row1 = Y-pol,
+    // complex data as interleaved real/imag per row.
+    // Skip this section if all tests failed.
+    // ============================================================
+    if (totalFailed == 0) {
+        std::cout << "\n=== Generating visualization data (.dat files) ===\n" << std::endl;
+
+        const long long NtViz = 1024;
+        const double fsViz = 100e9;
+        const double dtViz = 1.0 / fsViz;
+        const double t0Viz = NtViz * dtViz / 2.0;
+
+        // Helper lambda to save a cmat to .dat file
+        auto saveCmat = [](const ZK::cmat& data, const std::string& filename) {
+            std::ofstream f(filename);
+            if (f.is_open()) {
+                f << std::scientific << std::setprecision(12);
+                for (int r = 0; r < data.rows(); ++r) {
+                    for (int c = 0; c < data.cols(); ++c) {
+                        f << data(r,c).real() << " " << data(r,c).imag();
+                        if (c < data.cols()-1) f << " ";
+                    }
+                    f << "\n";
+                }
+                f.close();
+            }
+        };
+
+        // --- Viz 1: Pure loss (visual confirmation of exponential attenuation) ---
+        {
+            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
+            saveCmat(sigIn, "FiberInput_PureLoss.dat");
+
+            ZK::DP_Fiber::Parameters p;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 100e3;
+            p.dispersion = 0.0; p.disS = 0.0; p.n2 = 0.0; p.bWdm = 50e9;
+            p.saveFile = "FiberOutput_PureLoss";
+
+            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
+            ZK::DP_Fiber::execute(p, s);
+            std::cout << "  Saved: FiberInput_PureLoss.dat / FiberOutput_PureLoss.dat" << std::endl;
+        }
+
+        // --- Viz 2: Pure dispersion pulse broadening ---
+        {
+            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
+            saveCmat(sigIn, "FiberInput_PureDispersion.dat");
+
+            ZK::DP_Fiber::Parameters p;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 50e3;
+            p.alpha_dBpm = 0.0; p.n2 = 0.0; p.bWdm = 50e9;
+            p.saveFile = "FiberOutput_PureDispersion";
+
+            ZK::DP_Fiber::Signals s; s.oIn = sigIn;
+            ZK::DP_Fiber::execute(p, s);
+            std::cout << "  Saved: FiberInput_PureDispersion.dat / FiberOutput_PureDispersion.dat" << std::endl;
+        }
+
+        // --- Viz 3: DBP round-trip (original vs fiber vs DBP compensated) ---
+        {
+            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
+            saveCmat(sigIn, "DBP_OriginalSignal.dat");
+
+            ZK::DP_Fiber::Parameters fp;
+            fp.Nt = NtViz; fp.fs = fsViz; fp.lSpan = 10e3; fp.bWdm = 50e9;
+            fp.saveFile = "DBP_FiberOutput";
+            ZK::DP_Fiber::Signals fsigs; fsigs.oIn = sigIn;
+            ZK::DP_Fiber::execute(fp, fsigs);
+
+            ZK::DP_DBP::Parameters dp;
+            dp.Nt = NtViz; dp.fs = fsViz; dp.nSpans = 1; dp.lSpan = 10e3;
+            dp.saveFile = "DBP_Compensated";
+            ZK::DP_DBP::Signals dsigs; dsigs.oIn = fsigs.out;
+            ZK::DP_DBP::execute(dp, dsigs);
+
+            std::cout << "  Saved: DBP_OriginalSignal.dat / DBP_FiberOutput.dat / DBP_Compensated.dat" << std::endl;
+        }
+
+        // --- Viz 4: Multi-span round-trip ---
+        {
+            ZK::cmat sigIn = generateGaussianPulse(NtViz, dtViz, t0Viz, 100e-12, 1.0, 0.8);
+            saveCmat(sigIn, "DBP_MultiSpan_Original.dat");
+
+            ZK::DP_Fiber::Parameters fp;
+            fp.Nt = NtViz; fp.fs = fsViz; fp.lSpan = 1e3; fp.dz = 200; fp.bWdm = 50e9;
+            ZK::cmat propagated = sigIn;
+            ZK::DP_Fiber::Signals fsigs;
+            for (int span = 0; span < 3; ++span) {
+                fsigs.oIn = propagated;
+                ZK::DP_Fiber::execute(fp, fsigs);
+                propagated = fsigs.out;
+            }
+
+            ZK::DP_DBP::Parameters dp;
+            dp.Nt = NtViz; dp.fs = fsViz; dp.nSpans = 3; dp.lSpan = 1e3; dp.dz = 200;
+            dp.saveFile = "DBP_MultiSpan_Compensated";
+            ZK::DP_DBP::Signals dsigs; dsigs.oIn = propagated;
+            ZK::DP_DBP::execute(dp, dsigs);
+
+            std::cout << "  Saved: DBP_MultiSpan_Original.dat / DBP_MultiSpan_Compensated.dat" << std::endl;
+        }
+
+        std::cout << "\nVisualization data generation complete." << std::endl;
+        std::cout << "Run DP_FiberTest.m and DP_DBPTest.m in MATLAB to view plots." << std::endl;
+    }
 
     return (totalFailed == 0) ? 0 : 1;
 }
