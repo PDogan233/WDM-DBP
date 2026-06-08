@@ -1,6 +1,6 @@
 # ZKIC_project — Claude 项目总览
 
-> 最后更新: 2026-06-05 (v4.1: 三方审查修复 — 环境配置缺项 + 库文档缺项 + 交付模板补全)
+> 最后更新: 2026-06-06 (v5.1: DBP 开发完成，15 测试通过，MATLAB 可视化，4 种测试信号含 QPSK)
 > 本文档供 Claude Code 在后续会话中快速理解项目背景、架构和规范。每次重大变更后请更新本文档。
 
 ---
@@ -30,7 +30,8 @@ ZKIC_project/
 ├── SSFM_Core.h/.cpp           ← SSFM 共享计算内核（chooseStep, applyNonlinearity, applyDispersion 等）
 ├── DP_Fiber.h/.cpp             ← 前向双偏振光纤传播 Agent (Manakov SSFM)
 ├── DP_DBP.h/.cpp               ← 全带数字反向传播 Agent (DBP)
-├── SSFM_SystemTest.cpp         ← 综合测试套件（15 用例，单 main）
+├── DP_DBPTest.cpp              ← 综合测试套件（15 用例 + 4 类信号可视化数据生成，单 main）
+├── DP_DBPTest.m                ← MATLAB 可视化（Part A: Fiber 传播, Part B: DBP 补偿+星座图）
 ├── fiber_WDM.h_old             ← [已归档] 旧版光纤代码
 ├── fiber_WDM.cpp_old           ← [已归档]
 ├── fiber_WDM_test.cpp_old      ← [已归档]
@@ -455,6 +456,7 @@ saveData(signal, params.saveFile, params.dataFormat, params.writeMode);
   - 文件名：与类名一致（如 `DP_Fiber.h` / `DP_Fiber.cpp` / `DP_FiberTest.cpp`）
 - 类成员命名使用驼峰式（如 `bandId`, `channelIndex`）
 - 私有成员函数注释在 .cpp 文件中
+- **注释语言**：代码中所有注释（文件头、类级/函数级文档块、行内注释）统一使用英文
 
 ### 3.8 交付物结构与命名
 
@@ -561,19 +563,21 @@ for each span:
 
 ### 4.4 DBP (dbp.py)
 
-两种模式：
+Python 参考实现支持两种模式：
 
 1. `dbp_fullband_to_subband()`: 提取子带 → 反向 SSFM → 重构全频带
 2. `dbp_subband()`: 直接在已下采样的子带上做 DBP
 
-反向传播（与正向对称，h 取负值）：
+C++ 当前实现：**全带 DBP**（对应 Python 的全带模式，即直接反转 SSFM）：
 
 ```
 for span in reverse(Nspans):
     remove EDFA gain
     for z < L:
-        NL(-h/2) → Disp(-h) → NL(-h/2)
+        NL(-h/2) → Disp(-h) → NL(-h/2)    ← h 取负值自动反转符号
 ```
+
+子带 DBP 留待后续实现。
 
 ### 4.5 接收端 DSP (rx_DSP.py)
 
@@ -611,8 +615,10 @@ for span in reverse(Nspans):
 
 ### 5.4 测试
 
-- `DP_FiberTest.cpp`: SSFM_Core 5 测试 + DP_Fiber 5 测试 + DBP 3 往返测试 (13/13 通过)
-- `DP_DBPTest.cpp_archive`: DP_DBP 独立测试套件 (5 测试)，重命名为 .cpp 激活
+- `DP_DBPTest.cpp`: SSFM_Core 5 测试 + DP_Fiber 5 测试 + DP_DBP 5 往返测试 (**15/15 通过**)
+- 4 类测试信号自动生成 .dat 可视化数据：Gaussian 脉冲、单音 CW、双音、**QPSK**
+- `DP_DBPTest.m`: MATLAB 可视化脚本（Part A: Fiber 传播, Part B: DBP 补偿 + QPSK 星座图）
+- QPSK 参数：100 符号, 80km 光纤, ~6% 色散 ISI + ~89° SPM 旋转 → 星座图清晰展示"干净→失真→恢复"
 
 ---
 
@@ -1291,17 +1297,19 @@ std::string ver = itpp_version();   // IT++ 库版本号
 
 ## 9. 当前进度
 
-- [X] 项目文件替换（旧文件 → fiber_WDM.* ）
+- [X] 项目文件替换（旧文件 → fiber_WDM.* 归档）
 - [X] VSCode + CMake 开发环境搭建完成
 - [X] CMakeLists.txt 配置完毕（自动文件发现 + CONFIGURE_DEPENDS）
 - [X] 第三方库（FFTW, ZKIC, GlobalValue）集成到项目内
 - [X] start_vsc.bat 多电脑自动适配（vswhere + 常见路径回退）
-- [X] 构建验证通过，可正常运行
 - [X] ZKIC 公司库 API 文档整理（GlobalValue + 数学库全部头文件 + CHM 手册）
 - [X] 技术决策确认（DP_Fiber/DP_DBP 命名、双偏振、参数方式、gitignore 策略）
-- [X] 重构 fiber_WDM → `SSFM_Core` + `DP_Fiber` + `DP_DBP`（Agent 模式 + ZK 类型 + Manakov 修正 + 双偏振）
-- [X] `SSFM_SystemTest.cpp` 测试套件（15/15 通过：SSFM_Core 5 + DP_Fiber 5 + DP_DBP 5）
-- [ ] 后续（按需）：EDFA、PMD、GlobalValue 迁移、MATLAB 可视化脚本、测试文档
+- [X] SSFM_Core + DP_Fiber + DP_DBP 实现（Agent 模式 + ZK 类型 + Manakov 8/9 修正 + 双偏振）
+- [X] DP_DBPTest.cpp 测试套件（15/15 通过，4 类测试信号含 QPSK）
+- [X] DP_DBPTest.m MATLAB 可视化（Part A: Fiber + Part B: DBP + QPSK 星座图）
+- [X] 参数命名修正（camelCase：lSpan, groupRef, dispersion, disS, aEff, bWdm, nSpans, gLin）
+- [X] 注释统一为英文，文件头模板更新
+- [ ] 后续（按需）：EDFA Agent、PMD、GlobalValue 迁移、测试文档 _tests.docx、程序原理说明文档
 
 ---
 
@@ -1315,14 +1323,17 @@ std::string ver = itpp_version();   // IT++ 库版本号
 | 双偏振 | **必须支持** X/Y 双偏振 |
 | PMD | **暂不实现**（与 Python 一致，系数=0） |
 | EDFA | **暂不实现** |
-| 类名 | Fiber: **`DP_Fiber`** / DBP: **`DP_DBP`**（暂定，后续按规范调整） |
+| 类名 | **`DP_Fiber`** / **`DP_DBP`**（已确认，符合 PascalCase 规范） |
 | 参数传递 | **先用独立变量定义**，但命名和结构尽量兼容 GlobalValue 的 Band 字段 |
 | ZKIC_lib 同步 | **不通过 git 同步**，新电脑手动复制 ZKIC_lib 目录到项目根目录 |
 | FFTW | `fftw/` 必须保留（ZKIC DLL 运行时依赖），代码中禁止直接调 FFTW API |
+| SSFM_Core | **非 Agent 工具类**，不含 Parameters/Signals/execute，供 DP_Fiber/DP_DBP 共享 |
 
 ### 10.2 仍需确认
 
-1. **类名终稿**：`DP_Fiber` / `DP_DBP` 是否符合公司命名规范？是否有指定的命名前缀/后缀规则？
+1. **GlobalValue 迁移时间线**：当前用独立 Parameters 结构体，后续需迁移到 GlobalValue Band 系统。是否有明确时间线？
+2. **EDFA Agent**：DP_DBP 中已有 gLin 参数（默认 1.0=透明），后续是否需要独立 EDFA Agent？
+3. **交付物完善**：debug/ 文件夹、_tests.docx 文档、程序原理说明文档——是否现在准备？
 
 ---
 

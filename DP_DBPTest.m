@@ -81,14 +81,12 @@ specIn  = fftshift(abs(fft(sigX_in)).^2);
 specOut = fftshift(abs(fft(sigX_out)).^2);
 plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--');
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-200 200]);
-title('X-Pol Spectrum'); legend('Input','Output');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; title('X-Pol Spectrum'); legend('Input','Output');
 
 subplot(2,2,4);
 plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--');
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-200 200]);
-title('Y-Pol Spectrum'); legend('Input','Output');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; title('Y-Pol Spectrum'); legend('Input','Output');
 
 sgtitle(sprintf('Gaussian — Pure Loss [%s]', passStr(pass1)));
 
@@ -135,13 +133,13 @@ specIn  = fftshift(abs(fft(sigX_in)).^2);
 specOut = fftshift(abs(fft(sigX_out)).^2);
 plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--');
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('X-Pol Spectrum'); legend('Input','Output');
 
 subplot(2,2,4);
 plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--');
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('Y-Pol Spectrum'); legend('Input','Output');
 
 sgtitle(sprintf('CW Tone — Pure NL [%s]', passStr(pass2)));
@@ -192,13 +190,13 @@ specIn  = fftshift(abs(fft(sigX_in)).^2);
 specOut = fftshift(abs(fft(sigX_out)).^2);
 plot(f*1e-9, 10*log10(specIn+eps),  'b-', 'LineWidth', 1.2); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--','LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-20 20]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('X-Pol Spectrum (look for new mixing products)'); legend('Input','Output');
 
 subplot(2,2,4);
 plot(f*1e-9, 10*log10(specIn+eps),  'b-', 'LineWidth', 1.2); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--','LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-20 20]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('Y-Pol Spectrum'); legend('Input','Output');
 
 sgtitle('Dual Tone — Pure NL (check spectrum for FWM products)');
@@ -253,13 +251,13 @@ specIn  = fftshift(abs(fft(sigX_in)).^2);
 specOut = fftshift(abs(fft(sigX_out)).^2);
 plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--');
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('X-Pol Spectrum'); legend('Input','Output');
 
 subplot(2,2,4);
 plot(f*1e-9, 10*log10(specIn+eps), 'b-'); hold on;
 plot(f*1e-9, 10*log10(specOut+eps), 'r--');
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-50 50]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('Y-Pol Spectrum'); legend('Input','Output');
 
 sgtitle(sprintf('QPSK — Full Fiber [%s]', passStr(pass4)));
@@ -330,8 +328,7 @@ specComp  = fftshift(abs(fft(compX)).^2);
 plot(f*1e-9, 10*log10(specOrig+eps),  'b-', 'LineWidth', 1.2); hold on;
 plot(f*1e-9, 10*log10(specFiber+eps), 'r--','LineWidth', 1.0);
 plot(f*1e-9, 10*log10(specComp+eps),  'g-.','LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-200 200]);
-title('X-Pol Spectrum'); legend('Original','Fiber','DBP');
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; title('X-Pol Spectrum'); legend('Original','Fiber','DBP');
 
 subplot(2,2,4);
 errX = abs(origX - compX);
@@ -392,7 +389,7 @@ specComp  = fftshift(abs(fft(compX)).^2);
 plot(f*1e-9, 10*log10(specOrig+eps),  'b-', 'LineWidth', 1.2); hold on;
 plot(f*1e-9, 10*log10(specFiber+eps), 'r--','LineWidth', 1.0);
 plot(f*1e-9, 10*log10(specComp+eps),  'g-.','LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-10 10]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('X-Pol Spectrum'); legend('Original','Fiber','DBP');
 
 subplot(2,2,4);
@@ -446,7 +443,7 @@ specComp  = fftshift(abs(fft(compX)).^2);
 plot(f*1e-9, 10*log10(specOrig+eps),  'b-', 'LineWidth', 1.2); hold on;
 plot(f*1e-9, 10*log10(specFiber+eps), 'r--','LineWidth', 1.0);
 plot(f*1e-9, 10*log10(specComp+eps),  'g-.','LineWidth', 1.0);
-xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on; xlim([-20 20]);
+xlabel('Frequency (GHz)'); ylabel('Power (dB)'); grid on;
 title('X-Pol Spectrum');
 legend('Original','Fiber','DBP');
 
@@ -504,8 +501,8 @@ end
 
 % Symbol timing (must match C++ viz section: nSym=64, sps=16)
 sps  = 10;               % samples per symbol (must match C++ viz section)
-nSym = Nt / sps;         % number of symbols
-symIdx = sps/2 + 1 : sps : Nt;  % sample at symbol centers (1-indexed)
+nSym = 100;              % must match C++ viz section (nSym=100)
+symIdx = sps/2 + 1 : sps : nSym * sps;  % exactly nSym symbol centers
 
 % Extract constellation samples at symbol centers
 origConstX  = origX(symIdx);
@@ -529,27 +526,23 @@ title('X-Pol: Intensity'); legend('Original','Fiber','DBP');
 subplot(2,3,2);
 plot(real(origConstX), imag(origConstX), 'b.', 'MarkerSize', 12);
 xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
-title('X-Pol: Original Constellation'); xlim([-0.3 0.3]); ylim([-0.3 0.3]);
-
+title('X-Pol: Original Constellation'); 
 % (1,3): Constellation — X-pol after fiber (scattered by dispersion + NL)
 subplot(2,3,3);
 plot(real(fiberConstX), imag(fiberConstX), 'r.', 'MarkerSize', 12);
 xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
-title('X-Pol: After Fiber (distorted)'); xlim([-0.3 0.3]); ylim([-0.3 0.3]);
-
+title('X-Pol: After Fiber (distorted)'); 
 % (2,1): Constellation — X-pol after DBP (should recover 4 clusters)
 subplot(2,3,4);
 plot(real(compConstX), imag(compConstX), 'g.', 'MarkerSize', 12);
 xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
 title('X-Pol: After DBP');
-xlim([-0.3 0.3]); ylim([-0.3 0.3]);
 
 % (2,2): Constellation — Y-pol after DBP
 subplot(2,3,5);
 plot(real(compConstY), imag(compConstY), 'g.', 'MarkerSize', 12);
 xlabel('In-Phase'); ylabel('Quadrature'); grid on; axis equal;
 title('Y-Pol: After DBP');
-xlim([-0.3 0.3]); ylim([-0.3 0.3]);
 
 % (2,3): Compensation error
 subplot(2,3,6);
