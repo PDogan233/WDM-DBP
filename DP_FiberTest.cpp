@@ -38,11 +38,11 @@
 #include <trig_hyp.h>        // ZK::cos, ZK::sin
 #include <vec.h>             // ZK::vec, ZK::cvec
 #include <mat.h>             // ZK::cmat
+#include <random.h>          // ZK::randb (random bits for QPSK)
 
 #include <cmath>             // std::abs, std::sqrt, std::exp, std::pow
 #include <complex>           // std::complex, std::norm
 #include <fstream>           // std::ofstream
-#include <random>            // std::mt19937, std::random_device (QPSK symbols)
 #include <iostream>          // std::cout, std::endl
 #include <iomanip>           // std::setprecision
 #include <string>
@@ -146,9 +146,10 @@ ZK::cmat generateQPSK(long long Nt, double dt, long long nSym, long long sps,
         std::complex<double>(-scale, -scale)
     };
 
-    // Mersenne Twister RNG with true random seed
-    std::mt19937 rng(std::random_device{}());
-    std::uniform_int_distribution<int> bitDist(0, 1);
+    // ZKIC random bits for all QPSK symbols at once
+    // 2 bits per symbol × nSym symbols × 2 polarizations
+    long long totalBits = 4 * nSym;
+    ZK::bvec bits = ZK::randb(totalBits);
 
     // Initialize signal to zero
     for (long long i = 0; i < Nt; ++i) {
@@ -158,9 +159,9 @@ ZK::cmat generateQPSK(long long Nt, double dt, long long nSym, long long sps,
 
     // Generate random QPSK symbols with Gaussian pulse shaping
     for (long long sym = 0; sym < nSym; ++sym) {
-        // Two independent random bits → one of four QPSK constellation points
-        int b0 = bitDist(rng);
-        int b1 = bitDist(rng);
+        // X-pol: two random bits → one of four QPSK constellation points
+        int b0 = static_cast<int>(bits(2 * sym));
+        int b1 = static_cast<int>(bits(2 * sym + 1));
         std::complex<double> qpskSym = qpskMap[b0 * 2 + b1];
 
         // Gaussian pulse centered at symbol position
@@ -169,9 +170,9 @@ ZK::cmat generateQPSK(long long Nt, double dt, long long nSym, long long sps,
             double t = static_cast<double>(i) * dt;
             double env = std::exp(-std::pow((t - tCenter) / pulseWidth, 2.0));
             signal(0, i) += qpskSym * env;
-            // Y-pol: independent random QPSK symbol
-            int b0y = bitDist(rng);
-            int b1y = bitDist(rng);
+            // Y-pol: independent random QPSK symbol (offset by 2*nSym bits)
+            int b0y = static_cast<int>(bits(2 * nSym + 2 * sym));
+            int b1y = static_cast<int>(bits(2 * nSym + 2 * sym + 1));
             std::complex<double> qpskSymY = qpskMap[b0y * 2 + b1y];
             signal(1, i) += qpskSymY * env;
         }

@@ -1,7 +1,8 @@
 {
     "files.associations": {
         "*.h": "cpp",
-        "*.cpp": "cpp"
+        "*.cpp": "cpp",
+        "fstream": "cpp"
     },
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "C_Cpp.autoAddFileAssociations": true,
