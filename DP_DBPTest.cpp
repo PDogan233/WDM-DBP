@@ -137,8 +137,11 @@ ZK::cmat generateQPSK(long long Nt, double dt, long long nSym, long long sps,
 {
     ZK::cmat signal(2, Nt);
 
-    // QPSK constellation: {1+j, -1+j, 1-j, -1-j} / sqrt(2)
-    const double scale = 1.0 / std::sqrt(2.0);
+    // QPSK constellation: scaled for realistic optical power.
+    // Scale 0.1 gives peak power ~0.016 W per polarization.
+    // At 80 km this produces ~89° SPM rotation + visible dispersion
+    // scattering — ideal for demonstrating "clean → distorted → recovered".
+    const double scale = 0.1;
     const std::complex<double> qpskMap[4] = {
         std::complex<double>( scale,  scale),
         std::complex<double>(-scale,  scale),
@@ -905,23 +908,29 @@ int main()
         // ========================================================
         std::cout << "--- Signal type 4: QPSK ---" << std::endl;
         {
-            long long nSym = 64;       // more symbols → better constellation
-            long long sps  = 16;       // samples per symbol (nSym*sps = NtViz)
-            double pulseW  = 30e-12;   // pulse width for Gaussian shaping
+            // Parameters chosen so that BOTH dispersion and nonlinearity
+            // visibly distort the constellation at 80 km:
+            //   - 100 symbols at 10 sps → 100 ps symbol spacing
+            //   - 35 ps pulses → clean original (<0.03% ISI)
+            //   - LD ≈ 58 km, L=80 km → ~69% broadening → ~6% ISI after fiber
+            //   - Scale 0.1 → ~89° SPM rotation → clear arc in constellation
+            long long nSym = 100;
+            long long sps  = 10;
+            double pulseW  = 35e-12;
             ZK::cmat sigIn = generateQPSK(NtViz, dtViz, nSym, sps, pulseW);
 
-            // Fiber: full effects at moderate distance
+            // Fiber: 80 km with realistic parameters
             saveCmat(sigIn, "Fiber_QPSKInput.dat");
             ZK::DP_Fiber::Parameters p;
-            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 10e3; p.bWdm = 50e9;
+            p.Nt = NtViz; p.fs = fsViz; p.lSpan = 80e3; p.dz = 2e3; p.bWdm = 50e9;
             p.saveFile = "Fiber_QPSKOutput";
             ZK::DP_Fiber::Signals s; s.oIn = sigIn;
             ZK::DP_Fiber::execute(p, s);
             double nmseFiber = computeNMSE(sigIn, s.out);
-            std::cout << "  Fiber (full effects): NMSE vs input=" << nmseFiber << std::endl;
+            std::cout << "  Fiber (80 km, full effects): NMSE vs input=" << nmseFiber << std::endl;
 
-            // DBP round-trip
-            vizRoundTrip(sigIn, "QPSK", 10.0, 0.05);
+            // DBP round-trip at 80 km
+            vizRoundTrip(sigIn, "QPSK", 80.0, 0.05);
         }
 
         std::cout << "\nVisualization data generation complete." << std::endl;
