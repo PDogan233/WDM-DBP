@@ -6,11 +6,11 @@
  ******************************************************************************/
 
 /**
- * @file: DP_FiberTest.cpp
- * @brief: Test suite for SSFM_Core utility kernels and DP_Fiber Agent.
- *         Covers fiber physics parameter derivation, frequency context,
- *         step-size control, Manakov nonlinearity, dispersion, and forward
- *         fiber propagation under various physical regimes.
+ * @file: DP_DBPTest.cpp
+ * @brief: Comprehensive test suite for SSFM_Core, DP_Fiber, and DP_DBP.
+ *         Covers fiber physics, SSFM kernels, forward propagation, DBP
+ *         round-trip compensation, and multi-signal visualization data.
+ *         This single file produces all test results for both Agents.
  * @author: Jiahao Zhang
  * @version: 1.0.0
  * @date: 2026-06-06
@@ -708,7 +708,7 @@ int main()
     int totalFailed = 0;
 
     std::cout << "==============================================" << std::endl;
-    std::cout << "  DP_Fiber Test Suite" << std::endl;
+    std::cout << "  DP_DBP Test Suite" << std::endl;
     std::cout << "  SSFM_Core + DP_Fiber + DP_DBP Round-Trip" << std::endl;
     std::cout << "==============================================" << std::endl;
 
